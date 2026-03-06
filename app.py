@@ -100,19 +100,32 @@ def render_league_ui(df, league_name):
 
     h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
 
-    # Obliczenia surowych średnich ważonych
+    # Obliczenia bazowe
     l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3)
     m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3)
     l_a_r = (a['AxG_F']*w0 + a['A_GF']*w1 + a['TxG_F']*w2 + a['T_GF']*w3)
     m_a_r = (a['AxG_A']*w0 + a['A_GA']*w1 + a['TxG_A']*w2 + a['T_GA']*w3)
 
-    # Współczynniki siły (Strength)
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 
-    # Parametry Poisson (Lambda i Mu)
     lambda_f = h_atk_s * a_def_s * avg_h_gf
     mu_f = a_atk_s * h_def_s * avg_a_gf
+
+    # --- NOWA SEKCJA: TABELA SIŁY (POD HERBAMI) ---
+    st.markdown("### 📊 Porównanie Siły Zespołów")
+    
+    def format_strength(val, is_attack=True):
+        pct = (val - 1.0) * 100
+        color = "green" if (is_attack and val >= 1) or (not is_attack and val <= 1) else "red"
+        return f":{color}[{val:.2f} ({pct:+.0f}%)]"
+
+    st.markdown(f"""
+    | Cecha | {h_team} (Gospodarz) | {a_team} (Gość) |
+    | :--- | :--- | :--- |
+    | **Siła Ataku** | {format_strength(h_atk_s, True)} | {format_strength(a_atk_s, True)} |
+    | **Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |
+    """)
 
     # --- ROZBUDOWANA ŚCIEŻKA OBLICZENIOWA ---
     with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
@@ -121,22 +134,16 @@ def render_league_ui(df, league_name):
         
         c1, c2 = st.columns(2)
         with c1:
-            st.markdown(f"**{h_team} (Gospodarz)**")
-            st.write(f"Ważona śr. strzelonych: `{l_h_r:.3f}`")
-            st.write(f"Ważona śr. straconych: `{m_h_r:.3f}`")
+            st.markdown(f"**{h_team}**")
             st.write(f"🎯 **Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
             st.write(f"🛡️ **Siła Obrony:** `{m_h_r:.3f} / {avg_a_gf:.3f} = {h_def_s:.3f}`")
         with c2:
-            st.markdown(f"**{a_team} (Gość)**")
-            st.write(f"Ważona śr. strzelonych: `{l_a_r:.3f}`")
-            st.write(f"Ważona śr. straconych: `{m_a_r:.3f}`")
+            st.markdown(f"**{a_team}**")
             st.write(f"🎯 **Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
             st.write(f"🛡️ **Siła Obrony:** `{m_a_r:.3f} / {avg_h_gf:.3f} = {a_def_s:.3f}`")
             
-        st.subheader("2. Wyliczenie Parametrów Rozkładu")
-        st.latex(rf"\lambda (Gospodarz) = {h_atk_s:.3f} \times {a_def_s:.3f} \times {avg_h_gf:.3f} = {lambda_f:.3f}")
-        st.latex(rf"\mu (Gość) = {a_atk_s:.3f} \times {h_def_s:.3f} \times {avg_a_gf:.3f} = {mu_f:.3f}")
-        st.info(f"Parametry korygowane Dixon-Coles (ρ = {fixed_rho}) dla niskich wyników bramkowych.")
+        st.subheader("2. Parametry Poisson")
+        st.latex(rf"\lambda = {lambda_f:.3f}, \quad \mu = {mu_f:.3f}")
 
     # Macierz
     max_g = 12
