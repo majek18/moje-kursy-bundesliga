@@ -12,14 +12,6 @@ st.set_page_config(page_title="Football Predictor Pro", layout="wide")
 # --- KONFIGURACJA AI ---
 # Klucz API musi być w Settings -> Secrets jako: GEMINI_API_KEY = "Twój_Klucz"
 api_key = st.secrets.get("GEMINI_API_KEY")
-if api_key:
-    try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
-    except Exception:
-        model = None
-else:
-    model = None
 
 # --- DANE BAZOWE: BUNDESLIGA ---
 @st.cache_data
@@ -99,7 +91,7 @@ if total_pct != 100:
 w0, w1, w2, w3 = v0/100, v1/100, v2/100, v3/100
 fixed_rho = -0.15
 
-# --- INTERFEJS ---
+# --- INTERFEJS LEAGUES ---
 tab_bl, tab_pl = st.tabs(["🇩🇪 Bundesliga", "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League"])
 
 def render_league_ui(df, league_name):
@@ -208,12 +200,11 @@ def render_league_ui(df, league_name):
     st.divider()
     st.subheader("🤖 AI Match Analyst")
     
-    # Próba pobrania klucza
-    api_key_check = st.secrets.get("GEMINI_API_KEY")
-    if api_key_check:
+    if api_key:
         try:
-            genai.configure(api_key=api_key_check)
-            chat_model = genai.GenerativeModel('gemini-1.5-flash')
+            genai.configure(api_key=api_key)
+            # POPRAWKA: Pełna nazwa modelu dla uniknięcia błędu 404
+            chat_model = genai.GenerativeModel('models/gemini-1.5-flash')
             
             if f"msg_{league_name}" not in st.session_state:
                 st.session_state[f"msg_{league_name}"] = []
@@ -228,7 +219,7 @@ def render_league_ui(df, league_name):
                     st.markdown(prompt)
 
                 with st.chat_message("assistant"):
-                    context = f"""Analizujesz mecz: {h_team} vs {a_team}. 
+                    context = f"""Jesteś ekspertem bukmacherskim. Analizujesz mecz: {h_team} vs {a_team}. 
                     Obliczone ExG: {h_team} {lambda_f:.2f}, {a_team} {mu_f:.2f}.
                     Szansa na wygraną: {h_team} {p1:.1%}, Remis {px:.1%}, {a_team} {p2:.1%}.
                     Użytkownik pyta: {prompt}"""
@@ -242,7 +233,7 @@ def render_league_ui(df, league_name):
         except Exception as e:
             st.error(f"Błąd konfiguracji: {str(e)}")
     else:
-        st.info("Podłącz GEMINI_API_KEY w Secrets (format: GEMINI_API_KEY = 'klucz'), aby rozmawiać z AI.")
+        st.warning("Podłącz GEMINI_API_KEY w Secrets, aby aktywować analityka AI.")
 
 with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
 with tab_pl: render_league_ui(load_premier_league(), "Premier League")
