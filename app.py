@@ -47,7 +47,6 @@ rho = st.sidebar.slider("Parametr Dixon-Coles (rho)", 0.0, 0.3, 0.1, 0.01)
 
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 def reset_weights(): st.session_state.reset_counter += 1
-
 st.sidebar.button("🔄 Resetuj wagi (40/25/20/15)", on_click=reset_weights)
 
 options = [i for i in range(0, 105, 5)]
@@ -148,42 +147,30 @@ st.write("### 2️⃣ Współczynnik siły drużyn")
 st.markdown(f"""
 **Atak gospodarzy**
 
-Attack Strength = λ_raw / średnia liga home goals
-
-= {l_h_r:.3f} / {avg_h_gf:.3f} = **{h_atk_s:.3f}**
+Attack Strength = λ_raw / średnia liga home goals = {l_h_r:.3f} / {avg_h_gf:.3f} = **{h_atk_s:.3f}**
 
 **Obrona gospodarzy**
 
-Defense Strength = μ_raw / średnia liga away goals
-
-= {m_h_r:.3f} / {avg_a_gf:.3f} = **{h_def_s:.3f}**
+Defense Strength = μ_raw / średnia liga away goals = {m_h_r:.3f} / {avg_a_gf:.3f} = **{h_def_s:.3f}**
 
 **Atak gości**
 
-Attack Strength = λ_raw / średnia liga away goals
-
-= {l_a_r:.3f} / {avg_a_gf:.3f} = **{a_atk_s:.3f}**
+Attack Strength = λ_raw / średnia liga away goals = {l_a_r:.3f} / {avg_a_gf:.3f} = **{a_atk_s:.3f}**
 
 **Obrona gości**
 
-Defense Strength = μ_raw / średnia liga home goals
-
-= {m_a_r:.3f} / {avg_h_gf:.3f} = **{a_def_s:.3f}**
+Defense Strength = μ_raw / średnia liga home goals = {m_a_r:.3f} / {avg_h_gf:.3f} = **{a_def_s:.3f}**
 """)
 
 st.write("### 3️⃣ Oczekiwane gole (λ Poissona)")
 st.markdown(f"""
 **λ gospodarzy**
 
-λ = Attack_home × Defense_away × avg_home_goals
-
-= {h_atk_s:.3f} × {a_def_s:.3f} × {avg_h_gf:.3f} = **{lambda_f:.3f}**
+λ = Attack_home × Defense_away × avg_home_goals = {h_atk_s:.3f} × {a_def_s:.3f} × {avg_h_gf:.3f} = **{lambda_f:.3f}**
 
 **λ gości**
 
-μ = Attack_away × Defense_home × avg_away_goals
-
-= {a_atk_s:.3f} × {h_def_s:.3f} × {avg_a_gf:.3f} = **{mu_f:.3f}**
+μ = Attack_away × Defense_home × avg_away_goals = {a_atk_s:.3f} × {h_def_s:.3f} × {avg_a_gf:.3f} = **{mu_f:.3f}**
 """)
 
 # --- MACIERZ DIXON-COLES ---
@@ -235,5 +222,4 @@ for i, line in enumerate(lines):
     u_p = sum(matrix[x, y] for x in range(max_g) for y in range(max_g) if x + y < line)
     o_p = 1 - u_p
     with ou_cols[i]:
-        st.markdown(f"**Linia {line}**")
-        st.write(f"🟢 **OVER**: {o_p:.1%} (k: {1/o_p:.
+        st.markdown(f"**Linia {line}
