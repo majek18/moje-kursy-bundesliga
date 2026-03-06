@@ -27,7 +27,7 @@ def load_data():
         'A_GA': [0.92, 1.17, 1.42, 1.67, 1.33, 1.50, 2.58, 2.08, 2.00, 1.75, 1.73, 1.50, 1.83, 2.08, 1.69, 1.92, 2.25, 2.17],
         'AxG_F': [2.72, 1.70, 1.62, 1.80, 1.76, 1.77, 1.43, 1.06, 1.18, 1.06, 1.00, 1.40, 1.39, 1.34, 0.95, 1.04, 1.30, 1.25],
         'AxG_A': [1.21, 1.41, 1.91, 1.46, 1.34, 1.62, 1.96, 1.91, 2.12, 1.61, 1.89, 1.52, 2.13, 2.28, 2.08, 2.08, 2.08, 2.38],
-        'Logo_ID': [27, 16, 24, 79, 23826, 15, 24, 60, 167, 89, 41, 18, 3, 39, 35, 86, 82, 2036]
+        'Logo_ID': [27, 16, 533, 79, 23826, 15, 24, 60, 167, 89, 41, 18, 3, 39, 35, 86, 82, 2036] # Poprawione ID Hoffenheim na 533
     }
     return pd.DataFrame(data)
 
@@ -125,7 +125,7 @@ c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
 c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
 c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
 
-# --- ANALIZA UNDER/OVER ---
+# --- ANALIZA UNDER/OVER Z KURSAMI ---
 st.divider()
 st.subheader("📉 Analiza Under / Over")
 lines = [1.5, 2.5, 3.5, 4.5]
@@ -135,8 +135,8 @@ for i, line in enumerate(lines):
     prob_over = 1 - prob_under
     with ou_cols[i]:
         st.markdown(f"**Linia {line}**")
-        st.write(f"🟢 **OVER**: {prob_over:.1%}")
-        st.write(f"🔴 **UNDER**: {prob_under:.1%}")
+        st.write(f"🟢 **OVER**: {prob_over:.1%} (k: {1/prob_over:.2f})")
+        st.write(f"🔴 **UNDER**: {prob_under:.1%} (k: {1/prob_under:.2f})")
         st.progress(prob_over)
 
 # --- KALKULATOR VALUE ---
