@@ -5,7 +5,7 @@ from scipy.stats import poisson
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Bundesliga Predictor Pro", layout="wide")
+st.set_page_config(page_title="Bundesliga Predictor Pro (Dixon-Coles)", layout="wide")
 
 # --- DANE BAZOWE ---
 @st.cache_data
@@ -34,126 +34,95 @@ df = load_data()
 avg_h_gf = df['H_GF'].mean()
 avg_a_gf = df['A_GF'].mean()
 
-# --- SIDEBAR: WAGI ---
-st.sidebar.header("⚖️ Konfiguracja Wag")
+# --- FUNKCJA DIXONA-COLESA ---
+def dixon_coles_adjustment(x, y, lambda_h, mu_a, rho):
+    """Korekta prawdopodobieństwa dla wyników 0:0, 1:0, 0:1 i 1:1"""
+    if x == 0 and y == 0:
+        return 1 - (lambda_h * mu_a * rho)
+    elif x == 0 and y == 1:
+        return 1 + (lambda_h * rho)
+    elif x == 1 and y == 0:
+        return 1 + (mu_a * rho)
+    elif x == 1 and y == 1:
+        return 1 - rho
+    else:
+        return 1
 
+# --- SIDEBAR ---
+st.sidebar.header("⚙️ Parametry Modelu")
+rho = st.sidebar.slider("Parametr Korekty Dixona-Colesa (rho)", 0.0, 0.3, 0.1, 0.01)
+
+st.sidebar.subheader("⚖️ Wagi Statystyk")
 D_W = [40, 25, 20, 15]
 options = [i for i in range(0, 105, 5)]
 
-if 'w_xg_dv' not in st.session_state: st.session_state.w_xg_dv = D_W[0]
-if 'w_g_dv' not in st.session_state: st.session_state.w_g_dv = D_W[1]
-if 'w_xg_all' not in st.session_state: st.session_state.w_xg_all = D_W[2]
-if 'w_g_all' not in st.session_state: st.session_state.w_g_all = D_W[3]
+if 'w0' not in st.session_state: st.session_state.w0, st.session_state.w1, st.session_state.w2, st.session_state.w3 = D_W
 
-if st.sidebar.button("🔄 Resetuj wagi (40/25/20/15)"):
-    st.session_state.w_xg_dv, st.session_state.w_g_dv = D_W[0], D_W[1]
-    st.session_state.w_xg_all, st.session_state.w_g_all = D_W[2], D_W[3]
-    st.rerun()
-
-v0 = st.sidebar.selectbox("🎯 xG Sezon (dom/wyjazd) %", options, index=options.index(st.session_state.w_xg_dv), key='w_xg_dv')
-v1 = st.sidebar.selectbox("⚽ Gole Sezon (dom/wyjazd) %", options, index=options.index(st.session_state.w_g_dv), key='w_g_dv')
-v2 = st.sidebar.selectbox("📊 xG Sezon (cały) %", options, index=options.index(st.session_state.w_xg_all), key='w_xg_all')
-v3 = st.sidebar.selectbox("📉 Gole Sezon (cały) %", options, index=options.index(st.session_state.w_g_all), key='w_g_all')
+v0 = st.sidebar.selectbox("🎯 xG Sezon (dom/wyjazd) %", options, index=options.index(st.session_state.w0))
+v1 = st.sidebar.selectbox("⚽ Gole Sezon (dom/wyjazd) %", options, index=options.index(st.session_state.w1))
+v2 = st.sidebar.selectbox("📊 xG Sezon (cały) %", options, index=options.index(st.session_state.w2))
+v3 = st.sidebar.selectbox("📉 Gole Sezon (cały) %", options, index=options.index(st.session_state.w3))
 
 w_xg_dv, w_g_dv, w_xg_all, w_g_all = v0/100, v1/100, v2/100, v3/100
-total_pct = v0 + v1 + v2 + v3
-color = "green" if total_pct == 100 else "red"
-st.sidebar.markdown(f"### Suma: :{color}[{total_pct}%]")
-
-if total_pct != 100:
-    st.sidebar.error("Suma wag musi wynosić 100%!")
+if (v0 + v1 + v2 + v3) != 100:
+    st.sidebar.error("Suma wag musi być 100%!")
     st.stop()
 
-# --- INTERFEJS GŁÓWNY ---
-st.title("⚽ Bundesliga Predictor Pro")
+# --- WYBÓR MECZU ---
+st.title("⚽ Bundesliga Predictor (Dixon-Coles)")
 c1, c2 = st.columns(2)
 with c1:
     h_team = st.selectbox("Gospodarz", df['Team'], index=0)
     h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
     st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=120)
 with c2:
-    a_team = st.selectbox("Gość", df['Team'], index=11)
+    a_team = st.selectbox("Gość", df['Team'], index=1)
     a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
     st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=120)
 
-# --- OBLICZENIA POISSONA ---
+# --- OBLICZENIA ---
 h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
 
-lambda_h_raw = (h['HxG_F']*w_xg_dv + h['H_GF']*w_g_dv + h['TxG_F']*w_xg_all + h['T_GF']*w_g_all)
-mu_h_raw = (h['HxG_A']*w_xg_dv + h['H_GA']*w_g_dv + h['TxG_A']*w_xg_all + h['T_GA']*w_g_all)
-lambda_a_raw = (a['AxG_F']*w_xg_dv + a['A_GF']*w_g_dv + a['TxG_F']*w_xg_all + a['T_GF']*w_g_all)
-mu_a_raw = (a['AxG_A']*w_xg_dv + a['A_GA']*w_g_dv + a['TxG_A']*w_xg_all + a['T_GA']*w_g_all)
+l_h_raw = (h['HxG_F']*w_xg_dv + h['H_GF']*w_g_dv + h['TxG_F']*w_xg_all + h['T_GF']*w_g_all)
+m_h_raw = (h['HxG_A']*w_xg_dv + h['H_GA']*w_g_dv + h['TxG_A']*w_xg_all + h['T_GA']*w_g_all)
+l_a_raw = (a['AxG_F']*w_xg_dv + a['A_GF']*w_g_dv + a['TxG_F']*w_xg_all + a['T_GF']*w_g_all)
+m_a_raw = (a['AxG_A']*w_xg_dv + a['A_GA']*w_g_dv + a['TxG_A']*w_xg_all + a['T_GA']*w_g_all)
 
-h_atk_s, h_def_s = (lambda_h_raw / avg_h_gf), (mu_h_raw / avg_a_gf)
-a_atk_s, a_def_s = (lambda_a_raw / avg_a_gf), (mu_a_raw / avg_h_gf)
+h_atk_s, h_def_s = (l_h_raw / avg_h_gf), (m_h_raw / avg_a_gf)
+a_atk_s, a_def_s = (l_a_raw / avg_a_gf), (m_a_raw / avg_h_gf)
 
 lambda_final = h_atk_s * a_def_s * avg_h_gf
 mu_final = a_atk_s * h_def_s * avg_a_gf
 
-max_goals = 12 # Zwiększony bufor dla obliczeń
-matrix = np.outer(poisson.pmf(range(max_goals), lambda_final), poisson.pmf(range(max_goals), mu_final))
+# Generowanie macierzy z korektą
+max_g = 12
+matrix = np.zeros((max_g, max_g))
+
+for x in range(max_g):
+    for y in range(max_g):
+        prob = poisson.pmf(x, lambda_final) * poisson.pmf(y, mu_final)
+        adj = dixon_coles_adjustment(x, y, lambda_final, mu_final, rho)
+        matrix[x, y] = prob * adj
+
+# Normalizacja macierzy (suma musi być 1)
+matrix /= matrix.sum()
+
 p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
 
-# --- PROGNOZA ---
+# --- WYNIKI ---
 st.divider()
-st.subheader("🎯 Prognoza Wyniku Końcowego")
+st.subheader("🎯 Prognoza (Korekta Dixon-Coles)")
 m1, mx, m2 = st.columns(3)
-m1.metric(label=f"Wygrana {h_team}", value=f"{p1:.1%}", delta=f"Kurs: {1/p1:.2f}")
-mx.metric(label="Remis", value=f"{px:.1%}", delta=f"Kurs: {1/px:.2f}")
-m2.metric(label=f"Wygrana {a_team}", value=f"{p2:.1%}", delta=f"Kurs: {1/p2:.2f}")
+m1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
+mx.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
+m2.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
 
-# --- TABELA WSPÓŁCZYNNIKÓW ---
-st.write("### 📊 Współczynniki Siły Drużyn")
-def fmt_s(val, is_def=False):
-    pct = (val - 1)
-    color = "green" if (pct < 0 if is_def else pct > 0) else "red"
-    return f":{color}[{val:.2f} ({pct:+.0%})]"
-
-st.markdown(f"""
-| Drużyna | Atak (Strength) | Obrona (Strength) | Prognozowane Gole |
-| :--- | :--- | :--- | :--- |
-| **{h_team}** | {fmt_s(h_atk_s)} | {fmt_s(h_def_s, True)} | **{lambda_final:.2f}** |
-| **{a_team}** | {fmt_s(a_atk_s)} | {fmt_s(a_def_s, True)} | **{mu_final:.2f}** |
-""")
-
-# --- VALUE BET ---
-st.write("### 🏦 Kalkulator Value Bet")
-ci1, ci2, ci3 = st.columns(3)
-with ci1: bk1 = st.text_input(f"Kurs na {h_team}", placeholder="np. 1.85")
-with ci2: bkx = st.text_input("Kurs na X", placeholder="np. 3.40")
-with ci3: bk2 = st.text_input(f"Kurs na {a_team}", placeholder="np. 4.50")
-
-def get_v(prob, bk):
-    try:
-        k = float(bk.replace(',', '.'))
-        return f"✅ TAK ({k:.2f})" if k > (1/prob) else f"❌ NIE ({k:.2f})"
-    except: return "-"
-
-value_data = {
-    "Typ": ["1", "X", "2"],
-    "Twoje Szanse": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"],
-    "Kurs Sprawiedliwy": [f"{1/p1:.2f}", f"{1/px:.2f}", f"{1/p2:.2f}"],
-    "Opłacalność?": [get_v(p1, bk1), get_v(px, bkx), get_v(p2, bk2)]
-}
-st.table(value_data)
-
-# --- ZIELONA MACIERZY DO 7 GOLI ---
-with st.expander("⚽ Analityczna macierz prawdopodobieństwa (Wyniki 0-7)"):
-    # Zakres 0-7 to pierwsze 8 indeksów (0,1,2,3,4,5,6,7)
+with st.expander("⚽ Macierz Prawdopodobieństwa (0-7 goli)"):
     limit = 8
-    m_plot = matrix[:limit, :limit]
-    
-    fig, ax = plt.subplots(figsize=(12, 7))
-    # Paleta YlGn: Yellow -> Green
-    sns.heatmap(m_plot, annot=True, fmt=".1%", cmap="YlGn", cbar=False, 
-                linewidths=0.5, linecolor='white',
-                xticklabels=range(limit), yticklabels=range(limit))
-    
-    plt.title(f"Prawdopodobieństwo Dokładnego Wyniku (0-7 goli)", pad=20)
-    plt.xlabel(f"Gole {a_team}", fontsize=10)
-    plt.ylabel(f"Gole {h_team}", fontsize=10)
-    
-    # Estetyka osi
-    plt.tick_params(axis='both', which='major', labelsize=10)
-    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False, linewidths=0.5)
+    plt.title(f"Rozkład goli z uwzględnieniem rho={rho}")
+    plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
     st.pyplot(fig)
+
+st.info("💡 Model Dixona-Colesa koryguje niedoszacowanie niskich remisów, co zazwyczaj podnosi kurs na faworyta i urealnia szanse na 0:0 i 1:1.")
