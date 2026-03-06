@@ -289,68 +289,91 @@ with tab_pl: render_league_ui(load_premier_league(), "Premier League")
 
 
 # =================================================================
-# --- SEKCJA CHATBOTA GEMINI (DODANA NA KOŃCU) ---
+# --- SEKCJA CHATBOTA GEMINI AI ---
 # =================================================================
 
-st.markdown("<br><br><hr><h1 style='text-align: center;'>💬 Chatbot Gemini AI</h1>", unsafe_allow_html=True)
+st.markdown(
+    "<br><br><hr><h1 style='text-align: center;'>💬 Chatbot Gemini AI</h1>",
+    unsafe_allow_html=True
+)
 
 # --- KONFIGURACJA API ---
 if "GOOGLE_API_KEY" in st.secrets:
     genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 else:
-    st.warning("⚠️ Chatbot: Brakuje klucza API w Secrets (GOOGLE_API_KEY).")
+    st.error("❌ Brakuje GOOGLE_API_KEY w Streamlit Secrets.")
+    st.stop()
 
 # --- ŁADOWANIE MODELU ---
 @st.cache_resource
 def load_gemini_model():
-    # Używamy flash 2.0 (poprawka z 2.5 na 2.0 zgodnie z dokumentacją)
-    return genai.GenerativeModel("gemini-1.5-flash")
+    # aktualny stabilny model
+    return genai.GenerativeModel("gemini-2.0-flash")
+
+model = load_gemini_model()
 
 # --- HISTORIA ROZMOWY ---
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
-# --- SIDEBAR (Opcje Chatbota) ---
+# --- OPCJE W SIDEBAR ---
 with st.sidebar:
     st.divider()
-    st.title("🤖 Chatbot Opcje")
+    st.title("🤖 Chatbot")
+
     if st.button("🗑️ Wyczyść historię czatu", use_container_width=True):
         st.session_state.messages = []
         st.rerun()
+
+    st.info("Model: Gemini 2.0 Flash")
 
 # --- WYŚWIETLANIE HISTORII ---
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- CZAT ---
-if "GOOGLE_API_KEY" in st.secrets:
-    model = load_gemini_model()
-    if prompt := st.chat_input("Zadaj pytanie o statystyki lub analizę..."):
+# --- OKNO CZATU ---
+if prompt := st.chat_input("Zadaj pytanie o statystyki, mecze lub analizę..."):
 
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+    # zapis wiadomości użytkownika
+    st.session_state.messages.append({
+        "role": "user",
+        "content": prompt
+    })
 
-        with st.chat_message("assistant"):
-            response_placeholder = st.empty()
-            response_placeholder.markdown("*(Myślę...)*")
+    # wyświetlenie wiadomości użytkownika
+    with st.chat_message("user"):
+        st.markdown(prompt)
 
-            try:
-                history = []
-                for msg in st.session_state.messages:
-                    role = "user" if msg["role"] == "user" else "model"
-                    history.append({"role": role, "parts": [msg["content"]]})
+    # generowanie odpowiedzi AI
+    with st.chat_message("assistant"):
 
-                chat = model.start_chat(history=history[:-1])
-                response = chat.send_message(prompt)
+        placeholder = st.empty()
+        placeholder.markdown("*(AI analizuje...)*")
 
-                if response.text:
-                    full_response = response.text
-                    response_placeholder.markdown(full_response)
-                    st.session_state.messages.append({"role": "assistant", "content": full_response})
-                else:
-                    response_placeholder.warning("⚠️ Model nie wygenerował odpowiedzi.")
+        try:
+            response = model.generate_content(prompt)
 
-            except Exception as e:
-                st.error(f"❌ Błąd AI: {str(e)}")
+            if response.text:
+                answer = response.text
+
+                placeholder.markdown(answer)
+
+                # zapis odpowiedzi AI
+                st.session_state.messages.append({
+                    "role": "assistant",
+                    "content": answer
+                })
+            else:
+                placeholder.warning("⚠️ Model nie wygenerował odpowiedzi.")
+
+        except Exception as e:
+
+            error = str(e)
+
+            if "404" in error:
+                st.error("❌ Model Gemini nie został znaleziony.")
+            elif "429" in error:
+                st.error("⏳ Limit zapytań do API został przekroczony.")
+            else:
+                st.error(f"❌ Błąd AI: {error}")
