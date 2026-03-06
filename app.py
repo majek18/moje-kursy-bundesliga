@@ -36,14 +36,13 @@ avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
 
 # --- FUNKCJA DIXONA-COLESA ---
 def dixon_coles_adjustment(x, y, l_h, m_a, rho):
-    if rho == 0: return 1
     if x == 0 and y == 0: return 1 - (l_h * m_a * rho)
     if x == 0 and y == 1: return 1 + (l_h * rho)
     if x == 1 and y == 0: return 1 + (m_a * rho)
     if x == 1 and y == 1: return 1 - rho
     return 1
 
-# --- SIDEBAR ---
+# --- SIDEBAR: KONFIGURACJA ---
 st.sidebar.header("⚙️ Konfiguracja")
 rho = st.sidebar.slider("Parametr Dixon-Coles (rho)", 0.0, 0.3, 0.1, 0.01)
 
@@ -51,6 +50,7 @@ if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 def reset_weights(): st.session_state.reset_counter += 1
 
 st.sidebar.button("🔄 Resetuj wagi (40/25/20/15)", on_click=reset_weights)
+
 options = [i for i in range(0, 105, 5)]
 v0 = st.sidebar.selectbox("🎯 xG Sezon D/W %", options, index=options.index(40), key=f"w0_{st.session_state.reset_counter}")
 v1 = st.sidebar.selectbox("⚽ Gole Sezon D/W %", options, index=options.index(25), key=f"w1_{st.session_state.reset_counter}")
@@ -58,14 +58,30 @@ v2 = st.sidebar.selectbox("📊 xG Cały Sezon %", options, index=options.index(
 v3 = st.sidebar.selectbox("📉 Gole Cały Sezon %", options, index=options.index(15), key=f"w3_{st.session_state.reset_counter}")
 
 total_pct = v0 + v1 + v2 + v3
-if total_pct != 100: st.sidebar.error("Suma wag musi wynosić 100%!"); st.stop()
+color = "green" if total_pct == 100 else "red"
+st.sidebar.markdown(f"### Suma: :{color}[{total_pct}%]")
+
+if total_pct != 100: 
+    st.sidebar.error("Suma wag musi wynosić 100%!")
+    st.stop()
 
 # --- LOGIKA OBLICZEŃ ---
 w0, w1, w2, w3 = v0/100, v1/100, v2/100, v3/100
-h_team = st.sidebar.selectbox("Gospodarz", df['Team'], index=0)
-a_team = st.sidebar.selectbox("Gość", df['Team'], index=1)
 
-h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
+st.title("⚽ Bundesliga Predictor Pro (Dixon-Coles)")
+
+col_a, col_b = st.columns(2)
+with col_a:
+    h_team = st.selectbox("Gospodarz", df['Team'], index=0)
+    h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
+    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
+with col_b:
+    a_team = st.selectbox("Gość", df['Team'], index=1)
+    a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
+    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
+
+h = df[df['Team'] == h_team].iloc[0]
+a = df[df['Team'] == a_team].iloc[0]
 
 l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3)
 m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3)
@@ -78,56 +94,94 @@ a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 lambda_f = h_atk_s * a_def_s * avg_h_gf
 mu_f = a_atk_s * h_def_s * avg_a_gf
 
+# --- MODUŁ: ŚCIEŻKA OBLICZENIOWA ---
+with st.expander("🧮 Ścieżka Obliczeniowa (Analiza parametrów i modelu Dixon-Coles)"):
+    st.subheader("Krok 1: Wyliczanie λ (Gospodarz) i μ (Gość)")
+    st.latex(rf"\lambda = {h_atk_s:.2f} \text{{ (Atak H)}} \times {a_def_s:.2f} \text{{ (Obrona A)}} \times {avg_h_gf:.2f} \text{{ (Śr. Dom)}} = \mathbf{{{lambda_f:.2f}}}")
+    st.latex(rf"\mu = {a_atk_s:.2f} \text{{ (Atak A)}} \times {h_def_s:.2f} \text{{ (Obrona H)}} \times {avg_a_gf:.2f} \text{{ (Śr. Wyjazd)}} = \mathbf{{{mu_f:.2f}}}")
+
+    st.subheader("Krok 2: Prawdopodobieństwo bramek (Rozkład Poissona)")
+    st.write("Wzór: $P(X=k) = \\frac{\lambda^k e^{-\lambda}}{k!}$")
+    g_range = range(6)
+    h_p = [poisson.pmf(k, lambda_f) for k in g_range]
+    a_p = [poisson.pmf(k, mu_f) for k in g_range]
+    
+    dist_df = pd.DataFrame({
+        "Gole": g_range,
+        f"{h_team} (Poisson)": [f"{p:.2%}" for p in h_p],
+        f"{a_team} (Poisson)": [f"{p:.2%}" for p in a_p]
+    }).set_index("Gole")
+    st.table(dist_df.T)
+
+    st.subheader("Krok 3: Korekta Dixon-Coles (Dlaczego 0:0 się różni?)")
+    p_h0, p_a0 = poisson.pmf(0, lambda_f), poisson.pmf(0, mu_f)
+    pure_00 = p_h0 * p_a0
+    adj_00 = dixon_coles_adjustment(0, 0, lambda_f, mu_f, rho)
+    
+    st.write(f"Twoje spostrzeżenie: Czysty Poisson dla 0:0 to `{p_h0:.2%}` × `{p_a0:.2%}` = **{pure_00:.2%}**.")
+    st.write(f"Model Dixon-Coles stosuje mnożnik dla (0,0): $1 - (\lambda \times \mu \times \\rho)$")
+    st.latex(rf"Mnożnik = 1 - ({lambda_f:.2f} \times {mu_f:.2f} \times {rho}) = \mathbf{{{adj_00:.4f}}}")
+    st.info(f"Finalne 0:0 w macierzy: {pure_00:.2%} × {adj_00:.2f} = **{(pure_00 * adj_00):.2%}** (przed normalizacją).")
+
 # --- GENEROWANIE MACIERZY ---
-max_g = 10
+max_g = 12
 matrix = np.zeros((max_g, max_g))
 for x in range(max_g):
     for y in range(max_g):
-        # 1. Czysty Poisson
         p = poisson.pmf(x, lambda_f) * poisson.pmf(y, mu_f)
-        # 2. Korekta Dixon-Coles
-        adj = dixon_coles_adjustment(x, y, lambda_f, mu_f, rho)
-        matrix[x, y] = p * adj
+        matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_f, mu_f, rho)
 
-# Normalizacja (suma musi być 1)
+# Ważne: Normalizacja, aby suma prawdopodobieństw wynosiła dokładnie 100%
 matrix /= matrix.sum()
 
-# --- INTERFEJS ---
-st.title("⚽ Bundesliga Predictor Pro")
-
-with st.expander("🧮 Ścieżka Obliczeniowa (Wzory i Tabela Poissona)"):
-    st.subheader("Krok 1: Parametry Lambda ($\lambda$) i Mu ($\mu$)")
-    st.latex(rf"\lambda = {h_atk_s:.2f} \cdot {a_def_s:.2f} \cdot {avg_h_gf:.2f} = {lambda_f:.2f}")
-    st.latex(rf"\mu = {a_atk_s:.2f} \cdot {h_def_s:.2f} \cdot {avg_a_gf:.2f} = {mu_f:.2f}")
-
-    st.subheader("Krok 2: Prawdopodobieństwo bramek (Rozkład Poissona)")
-    cols = range(6)
-    h_dist = [poisson.pmf(i, lambda_f) for i in cols]
-    a_dist = [poisson.pmf(i, mu_f) for i in cols]
-    
-    dist_df = pd.DataFrame([h_dist, a_dist], 
-                           columns=[f"{i} Goli" for i in cols], 
-                           index=[h_team, a_team])
-    st.table(dist_df.style.format("{:.2%}"))
-
-    st.subheader("Krok 3: Korekta Dixon-Coles (Mnożniki)")
-    st.write(f"Dla rho = {rho}, wyniki 0-0, 1-0, 0-1 i 1-1 są korygowane mnożnikami:")
-    adj_00 = dixon_coles_adjustment(0, 0, lambda_f, mu_f, rho)
-    adj_10 = dixon_coles_adjustment(1, 0, lambda_f, mu_f, rho)
-    adj_01 = dixon_coles_adjustment(0, 1, lambda_f, mu_f, rho)
-    adj_11 = dixon_coles_adjustment(1, 1, lambda_f, mu_f, rho)
-    
-    st.code(f"0-0: {adj_00:.3f} | 1-0: {adj_10:.3f} | 0-1: {adj_01:.3f} | 1-1: {adj_11:.3f}")
-
-# --- WYNIKI 1X2 ---
 p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
-c1, c2, c3 = st.columns(3)
-c1.metric(f"Wygrana {h_team}", f"{p1:.1%}")
-c2.metric("Remis", f"{px:.1%}")
-c3.metric(f"Wygrana {a_team}", f"{p2:.1%}")
 
-# Macierz
-fig, ax = plt.subplots(figsize=(8, 4))
-sns.heatmap(matrix[:6, :6], annot=True, fmt=".1%", cmap="Greens")
+# --- WIDOK: 1X2 ---
+st.divider()
+c1, c2, c3 = st.columns(3)
+c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
+c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
+c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
+
+# --- MACIERZ ---
+st.write("### ⚽ Macierz Prawdopodobieństwa (Wyniki skorygowane)")
+limit = 8
+fig, ax = plt.subplots(figsize=(10, 5))
+sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
 plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
 st.pyplot(fig)
+
+# --- ANALIZA UNDER/OVER ---
+st.divider()
+st.subheader("📉 Analiza Under / Over")
+lines = [1.5, 2.5, 3.5, 4.5]
+ou_cols = st.columns(len(lines))
+for i, line in enumerate(lines):
+    u_p = sum(matrix[x, y] for x in range(max_g) for y in range(max_g) if x + y < line)
+    o_p = 1 - u_p
+    with ou_cols[i]:
+        st.markdown(f"**Linia {line}**")
+        st.write(f"🟢 **OVER**: {o_p:.1%}")
+        st.write(f"🔴 **UNDER**: {u_p:.1%}")
+        st.progress(o_p)
+
+# --- KALKULATOR VALUE ---
+st.divider()
+st.write("### 🏦 Kalkulator Value Bet")
+v1, v2, v3 = st.columns(3)
+with v1: bk1 = st.text_input(f"Kurs {h_team}", "2.00")
+with v2: bkx = st.text_input("Kurs X", "3.40")
+with v3: bk2 = st.text_input(f"Kurs {a_team}", "4.00")
+
+def check_v(prob, bk):
+    try:
+        k = float(bk.replace(',', '.'))
+        return f"✅ TAK ({k:.2f})" if k > (1/prob) else f"❌ NIE ({k:.2f})"
+    except: return "-"
+
+st.table({
+    "Typ": ["1", "X", "2"],
+    "Model (%)": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"],
+    "Kurs Fair": [f"{1/p1:.2f}", f"{1/px:.2f}", f"{1/p2:.2f}"],
+    "Value?": [check_v(p1, bk1), check_v(px, bkx), check_v(p2, bk2)]
+})
