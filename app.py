@@ -16,7 +16,7 @@ if gemini_key:
     try:
         genai.configure(api_key=gemini_key)
         # Używamy stabilnej nazwy modelu
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
     except Exception as e:
         st.error(f"Problem z konfiguracją AI: {e}")
         model = None
