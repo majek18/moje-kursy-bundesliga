@@ -4,16 +4,18 @@ import numpy as np
 from scipy.stats import poisson
 import seaborn as sns
 import matplotlib.pyplot as plt
-from openai import OpenAI
+import google.generativeai as genai
 
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Football Predictor Pro", layout="wide")
 
-# --- KONFIGURACJA AI (Llama 3.1 via Hugging Face) ---
-hf_token = st.secrets.get("HF_TOKEN")
-client = None
-if hf_token:
-    client = OpenAI(base_url="https://router.huggingface.co/v1", api_key=hf_token)
+# --- KONFIGURACJA AI (GEMINI) ---
+gemini_key = st.secrets.get("GEMINI_API_KEY")
+if gemini_key:
+    genai.configure(api_key=gemini_key)
+    model = genai.GenerativeModel('gemini-1.5-flash')
+else:
+    model = None
 
 # --- DANE BAZOWE: BUNDESLIGA ---
 @st.cache_data
@@ -150,7 +152,7 @@ def render_league_ui(df, league_name):
     matrix /= matrix.sum()
     p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
 
-    # --- WIZUALIZACJA WYNIKÓW ---
+    # --- WYŚWIETLANIE METRYK ---
     st.divider()
     c1, c2, c3 = st.columns(3)
     c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/max(p1, 0.001):.2f}")
@@ -162,6 +164,7 @@ def render_league_ui(df, league_name):
     ex_h.metric(f"ExG {h_team}", f"{lambda_f:.2f}")
     ex_a.metric(f"ExG {a_team}", f"{mu_f:.2f}")
 
+    # --- TABELA SIŁY ---
     st.divider()
     st.markdown("### 📊 Porównanie Siły Zespołów")
     def format_strength(val, is_attack=True):
@@ -169,129 +172,81 @@ def render_league_ui(df, league_name):
         color = "green" if (is_attack and val >= 1) or (not is_attack and val <= 1) else "red"
         return f":{color}[{val:.2f} ({pct:+.0f}%)]"
     st.markdown(f"""
-    | Cecha | {h_team} (Gospodarz) | {a_team} (Gość) |
+    | Cecha | {h_team} | {a_team} |
     | :--- | :--- | :--- |
     | **Siła Ataku** | {format_strength(h_atk_s, True)} | {format_strength(a_atk_s, True)} |
     | **Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |
-    | **Łączny Modyfikator** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |
+    | **Łączny Mod** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |
     """)
 
-    with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
-        st.subheader("1. Średnie ligowe")
-        st.write(f"Średnia gospodarzy: `{avg_h_gf:.3f}` | Średnia gości: `{avg_a_gf:.3f}`")
-        sc1, sc2 = st.columns(2)
-        with sc1:
-            st.markdown(f"**{h_team}**")
-            st.write(f"🎯 **Bazowa Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
-        with sc2:
-            st.markdown(f"**{a_team}**")
-            st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
-        st.subheader("2. Parametry Poisson (Skorygowane)")
-        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}")
-        st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
-
-    with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
-        limit = 8
+    # --- MACIERZ I ANALIZA OU ---
+    with st.expander("📊 Macierz i Analiza O/U"):
+        st.subheader("Macierz Prawdopodobieństwa")
         fig, ax = plt.subplots(figsize=(10, 5))
-        sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
-        plt.xlabel(f"Gole {a_team}")
-        plt.ylabel(f"Gole {h_team}")
+        sns.heatmap(matrix[:8, :8], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
+        plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
         st.pyplot(fig)
+        
+        st.subheader("Under / Over")
+        lines = [1.5, 2.5, 3.5, 4.5]
+        ou_cols = st.columns(len(lines))
+        for i, line in enumerate(lines):
+            prob_u = sum(matrix[x,y] for x in range(max_g) for y in range(max_g) if x+y < line)
+            with ou_cols[i]:
+                st.write(f"**Lina {line}**")
+                st.write(f"🟢 O: {1-prob_u:.1%}")
+                st.write(f"🔴 U: {prob_u:.1%}")
 
+    # --- SYMULACJA ---
     st.divider()
-    st.subheader("📉 Analiza Under / Over")
-    lines = [1.5, 2.5, 3.5, 4.5]
-    ou_cols = st.columns(len(lines))
-    for i, line in enumerate(lines):
-        prob_under = sum(matrix[x, y] for x in range(max_g) for y in range(max_g) if x + y < line)
-        prob_over = 1 - prob_under
-        with ou_cols[i]:
-            st.markdown(f"**Linia {line}**")
-            st.write(f"🟢 **OVER**: {prob_over:.1%} (Kurs: {1/max(prob_over, 0.001):.2f})")
-            st.write(f"🔴 **UNDER**: {prob_under:.1%} (Kurs: {1/max(prob_under, 0.001):.2f})")
-
-    st.divider()
-    st.subheader("🥅 Obie Drużyny Strzelą (BTTS)")
-    prob_btts_yes = sum(matrix[x, y] for x in range(1, max_g) for y in range(1, max_g))
-    prob_btts_no = 1 - prob_btts_yes
-    b1, b2 = st.columns(2)
-    with b1:
-        st.write(f"🟢 **TAK**: {prob_btts_yes:.1%} (Kurs: {1/max(prob_btts_yes, 0.001):.2f})")
-    with b2:
-        st.write(f"🔴 **NIE**: {prob_btts_no:.1%} (Kurs: {1/max(prob_btts_no, 0.001):.2f})")
-
-    st.divider()
-    if st.button(f"🎲 URUCHOM ANALIZĘ 1 000 000 SCENARIUSZY", use_container_width=True, key=f"sim_{league_name}"):
-        with st.status("Trwa symulowanie (1 mln prób)...", expanded=True) as status:
-            n_sim = 1000000
-            sim_h = np.random.poisson(lambda_f, n_sim)
-            sim_a = np.random.poisson(mu_f, n_sim)
-            res_df = pd.DataFrame({'H': sim_h, 'A': sim_a, 'Total': sim_h + sim_a})
-            most_common_row = res_df.groupby(['H', 'A']).size().idxmax()
-            st.success(f"🏆 Najczęstszy wynik: **{most_common_row[0]}:{most_common_row[1]}**")
-            fig2, ax2 = plt.subplots(figsize=(10, 4))
-            sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=2)
-            sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=2)
-            plt.xlim(-0.5, 8.5)
-            plt.legend()
-            st.pyplot(fig2)
-            st.markdown("### 🔍 Wnioski")
-            col_w1, col_w2 = st.columns(2)
-            with col_w1:
-                st.write(f"🏠 Wygrane {h_team}: **{(sim_h > sim_a).sum():,}**")
-                st.write(f"🤝 Remisy: **{(sim_h == sim_a).sum():,}**")
-                st.write(f"🚀 Wygrane {a_team}: **{(sim_a > sim_h).sum():,}**")
-            with col_w2:
-                st.write(f"🔥 Over 4.5: **{(res_df['Total'] >= 4.5).sum():,}**")
-                st.write(f"🧤 Czyste konto {h_team}: **{(sim_a == 0).sum():,}**")
-                st.write(f"🥅 BTTS: TAK: **{((sim_h > 0) & (sim_a > 0)).sum():,}**")
+    if st.button(f"🎲 URUCHOM ANALIZĘ 1 MLN SCENARIUSZY", use_container_width=True, key=f"sim_{league_name}"):
+        with st.status("Symulowanie...", expanded=True) as status:
+            sim_h = np.random.poisson(lambda_f, 1000000)
+            sim_a = np.random.poisson(mu_f, 1000000)
+            st.success(f"🏆 Najczęstszy wynik: {pd.Series(list(zip(sim_h, sim_a))).mode()[0]}")
             status.update(label="Analiza zakończona!", state="complete")
 
-    # --- MODUŁ CZATU AI (NA SAMYM DOLE) ---
+    # --- MODUŁ CZATU GEMINI (NA SAMYM DOLE) ---
     st.divider()
-    st.subheader("🤖 AI Sport Analyst (Llama 3.1)")
+    st.subheader("♊ AI Sport Analyst (Gemini 1.5 Flash)")
     
-    if client:
-        chat_key = f"chat_history_{league_name}"
+    if model:
+        chat_key = f"gemini_chat_{league_name}"
         if chat_key not in st.session_state:
             st.session_state[chat_key] = []
 
-        # Wyświetlanie historii rozmowy
+        # Wyświetlanie historii
         for msg in st.session_state[chat_key]:
             with st.chat_message(msg["role"]):
                 st.markdown(msg["content"])
 
-        # Input użytkownika
-        if prompt := st.chat_input(f"Zapytaj o mecz {h_team} - {a_team}", key=f"ai_input_{league_name}"):
+        # Chat Input
+        if prompt := st.chat_input(f"Zapytaj Gemini o mecz {h_team} - {a_team}", key=f"gem_in_{league_name}"):
             st.session_state[chat_key].append({"role": "user", "content": prompt})
             with st.chat_message("user"):
                 st.markdown(prompt)
 
             with st.chat_message("assistant"):
                 try:
-                    # Przekazujemy AI kontekst Twoich obliczeń
-                    context_prompt = f"""Jesteś ekspertem analitykiem. Analizujesz mecz {league_name}: {h_team} vs {a_team}.
-                    Twoje obliczenia (Poisson):
-                    - Szanse: {p1:.1%} (Wygrana {h_team}), {px:.1%} (Remis), {p2:.1%} (Wygrana {a_team}).
-                    - Przewidywane gole (ExG): {h_team}: {lambda_f:.2f}, {a_team}: {mu_f:.2f}.
-                    - Kursy: {1/max(p1, 0.001):.2f} / {1/max(px, 0.001):.2f} / {1/max(p2, 0.001):.2f}.
-                    Analizuj te dane i odpowiedz krótko na pytanie: {prompt}"""
-
-                    response = client.chat.completions.create(
-                        model="meta-llama/Llama-3.1-8B-Instruct:novita",
-                        messages=[{"role": "user", "content": context_prompt}],
-                        max_tokens=300
-                    )
-                    answer = response.choices[0].message.content
+                    # Budowanie kontekstu dla Gemini
+                    context = f"""Jesteś analitykiem sportowym. Analizujesz mecz {league_name}: {h_team} vs {a_team}.
+                    Twoje dane statystyczne:
+                    - Prawdopodobieństwo: {h_team} win ({p1:.1%}), Remis ({px:.1%}), {a_team} win ({p2:.1%}).
+                    - Oczekiwane gole (ExG): {h_team} ({lambda_f:.2f}), {a_team} ({mu_f:.2f}).
+                    - Twoje kursy: {1/max(p1, 0.001):.2f} / {1/max(px, 0.001):.2f} / {1/max(p2, 0.001):.2f}.
+                    Modyfikatory zewnętrzne: {h_team} ({h_total_mod:+.0%}), {a_team} ({a_total_mod:+.0%}).
+                    
+                    Odpowiedz konkretnie na pytanie użytkownika: {prompt}"""
+                    
+                    response = model.generate_content(context)
+                    answer = response.text
                     st.markdown(answer)
                     st.session_state[chat_key].append({"role": "assistant", "content": answer})
                 except Exception as e:
-                    st.error(f"AI Error: {e}")
+                    st.error(f"Błąd Gemini: {e}")
     else:
-        st.info("💡 Dodaj `HF_TOKEN` w Secrets, aby odblokować analizę AI.")
+        st.warning("⚠️ Brak `GEMINI_API_KEY` w Secrets. Czat jest wyłączony.")
 
-# --- RENDEROWANIE TABÓW ---
-with tab_bl: 
-    render_league_ui(load_bundesliga(), "Bundesliga")
-with tab_pl: 
-    render_league_ui(load_premier_league(), "Premier League")
+# --- START ---
+with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
+with tab_pl: render_league_ui(load_premier_league(), "Premier League")
