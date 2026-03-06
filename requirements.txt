@@ -2,4 +2,4 @@ streamlit
 pandas
 numpy
 scipy
-openai
+google-generativeai>=0.7.2
