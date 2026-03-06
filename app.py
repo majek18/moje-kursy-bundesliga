@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
 from scipy.stats import poisson
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -102,7 +103,6 @@ def render_league_ui(df, league_name):
         h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
         
-        # --- MODYFIKATORY GOSPODARZA ---
         with st.expander("🛠️ Modyfikatory Gospodarza"):
             mod_range = list(range(-20, 21))
             m_key = st.session_state.mod_reset
@@ -118,7 +118,6 @@ def render_league_ui(df, league_name):
         a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
         
-        # --- MODYFIKATORY GOŚCIA ---
         with st.expander("🛠️ Modyfikatory Gościa"):
             mod_range = list(range(-20, 21))
             m_key = st.session_state.mod_reset
@@ -157,6 +156,53 @@ def render_league_ui(df, league_name):
     c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/max(p1, 0.001):.2f}")
     c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/max(px, 0.001):.2f}")
     c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/max(p2, 0.001):.2f}")
+
+    # --- MODUŁ: WYKRES PAJĘCZYNOWY (RADAR CHART) ---
+    st.divider()
+    st.markdown("### 🧬 Profil Taktyczny Zespołów")
+    
+    # Przygotowanie danych do radaru (Normalizacja vs Średnia ligowa)
+    categories = ['Atak (Gole)', 'Atak (xG)', 'Obrona (Gole)', 'Obrona (xG)', 'Skuteczność Ogólna']
+    
+    # Skale: Im wyższa wartość, tym lepiej. Dla obrony odwracamy (lepiej mieć mało straconych)
+    h_radar = [
+        h['T_GF'] / df['T_GF'].mean(),
+        h['TxG_F'] / df['TxG_F'].mean(),
+        df['T_GA'].mean() / h['T_GA'],
+        df['TxG_A'].mean() / h['TxG_A'],
+        (h['T_GF'] + h['TxG_F']) / (df['T_GF'].mean() + df['TxG_F'].mean())
+    ]
+    
+    a_radar = [
+        a['T_GF'] / df['T_GF'].mean(),
+        a['TxG_F'] / df['TxG_F'].mean(),
+        df['T_GA'].mean() / a['T_GA'],
+        df['TxG_A'].mean() / a['TxG_A'],
+        (a['T_GF'] + a['TxG_F']) / (df['T_GF'].mean() + df['TxG_F'].mean())
+    ]
+
+    fig_radar = go.Figure()
+    fig_radar.add_trace(go.Scatterpolar(
+        r=h_radar, theta=categories, fill='toself', name=h_team,
+        line_color='#1f77b4', fillcolor='rgba(31, 119, 180, 0.3)'
+    ))
+    fig_radar.add_trace(go.Scatterpolar(
+        r=a_radar, theta=categories, fill='toself', name=a_team,
+        line_color='#ff7f0e', fillcolor='rgba(255, 127, 14, 0.3)'
+    ))
+    
+    fig_radar.update_layout(
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, max(max(h_radar), max(a_radar)) + 0.2]),
+            bgcolor="rgba(0,0,0,0)"
+        ),
+        showlegend=True,
+        margin=dict(l=80, r=80, t=20, b=20),
+        height=450
+    )
+    st.plotly_chart(fig_radar, use_container_width=True)
+
+    
 
     st.divider()
     st.markdown("### 📊 Porównanie Siły Zespołów")
