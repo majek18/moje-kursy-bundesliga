@@ -45,7 +45,7 @@ def load_premier_league():
         'TxG_F': [1.96, 2.01, 1.91, 1.34, 2.12, 1.86, 1.76, 1.30, 1.71, 1.26, 1.00, 1.63, 1.67, 1.45, 1.51, 1.18, 1.20, 1.29, 0.94, 0.93],
         'TxG_A': [0.79, 1.19, 1.27, 1.54, 1.47, 1.27, 1.47, 1.51, 1.45, 1.58, 1.61, 1.37, 1.50, 1.47, 1.54, 1.55, 1.72, 1.84, 2.16, 1.74],
         'A_GF': [1.62, 1.64, 1.60, 1.28, 2.00, 1.46, 1.33, 1.14, 1.64, 1.14, 0.53, 1.00, 1.26, 1.14, 1.00, 1.50, 1.00, 1.20, 1.13, 0.35],
-        'A_GA': [0.81, 1.14, 1.60, 1.35, 1.20, 1.53, 1.66, 1.00, 2.21, 1.78, 1.40, 1.35, 1.13, 1.42, 2.00, 1.50, 1.60, 1.80, 2.33, 1.50],
+        'A_GA': [0.81, 1.14, 1.60, 1.35, 1.20, 1.53, 1.66, 1.00, 2.21, 1.78, 1.40, 1.35, 1.13, 1.42, 2.00, 1.50, 1.83, 2.08, 2.33, 1.50],
         'AxG_F': [1.87, 1.78, 1.70, 1.32, 2.10, 1.81, 1.48, 1.22, 1.79, 1.11, 0.91, 1.03, 1.43, 1.48, 1.23, 1.10, 0.90, 1.20, 0.85, 0.68],
         'AxG_A': [0.84, 1.31, 1.51, 1.78, 1.41, 1.47, 1.62, 1.59, 2.20, 1.83, 1.75, 1.27, 1.49, 1.64, 1.77, 1.53, 1.85, 2.04, 2.43, 1.75],
         'Logo_ID': [11, 281, 985, 405, 631, 31, 1148, 29, 1003, 931, 289, 762, 873, 1237, 399, 148, 703, 379, 1132, 543]
@@ -91,6 +91,7 @@ fixed_rho = -0.15
 tab_bl, tab_pl = st.tabs(["🇩🇪 Bundesliga", "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League"])
 
 def render_league_ui(df, league_name):
+    # Średnie bazowe dla całej ligi (potrzebne do Poisson)
     avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
     
     st.title(f"⚽ {league_name} Predictor")
@@ -173,18 +174,31 @@ def render_league_ui(df, league_name):
             color = "#28a745" if val <= avg else "#dc3545" # Zielony jeśli poniżej średniej (Obrona)
         return f'background-color: {color}; color: white; font-weight: bold'
 
-    def create_stat_styled_table(team_data, context, l_avg_gf, l_avg_ga):
+    def create_stat_styled_table(team_data, context, full_df):
+        # Dynamiczne obliczanie średniej ligowej w zależności od wyboru kółeczka
         if context == "Cały sezon":
             gf, ga, xgf, xga = team_data['T_GF'], team_data['T_GA'], team_data['TxG_F'], team_data['TxG_A']
+            l_avg_gf = full_df['T_GF'].mean()
+            l_avg_ga = full_df['T_GA'].mean()
+            l_avg_xgf = full_df['TxG_F'].mean()
+            l_avg_xga = full_df['TxG_A'].mean()
         elif context == "Dom":
             gf, ga, xgf, xga = team_data['H_GF'], team_data['H_GA'], team_data['HxG_F'], team_data['HxG_A']
+            l_avg_gf = full_df['H_GF'].mean()
+            l_avg_ga = full_df['H_GA'].mean()
+            l_avg_xgf = full_df['HxG_F'].mean()
+            l_avg_xga = full_df['HxG_A'].mean()
         else: # Wyjazd
             gf, ga, xgf, xga = team_data['A_GF'], team_data['A_GA'], team_data['AxG_F'], team_data['AxG_A']
+            l_avg_gf = full_df['A_GF'].mean()
+            l_avg_ga = full_df['A_GA'].mean()
+            l_avg_xgf = full_df['AxG_F'].mean()
+            l_avg_xga = full_df['AxG_A'].mean()
 
         df_stats = pd.DataFrame({
             "Statystyka": ["Gole Strzelone", "Gole Stracone", "xG (Atak)", "xG (Obrona)"],
             "Drużyna": [gf, ga, xgf, xga],
-            "Średnia ligi": [l_avg_gf, l_avg_ga, l_avg_gf, l_avg_ga]
+            "Średnia ligi": [l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga]
         })
 
         def apply_styling(row):
@@ -199,12 +213,12 @@ def render_league_ui(df, league_name):
     with col_stats_h:
         st.markdown(f"**Zakres dla {h_team}**")
         ctx_h = st.radio("Wybierz:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_h_{league_name}")
-        st.table(create_stat_styled_table(h, ctx_h, avg_h_gf, avg_a_gf))
+        st.table(create_stat_styled_table(h, ctx_h, df))
 
     with col_stats_a:
         st.markdown(f"**Zakres dla {a_team}**")
         ctx_a = st.radio("Wybierz:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_a_{league_name}")
-        st.table(create_stat_styled_table(a, ctx_a, avg_h_gf, avg_a_gf))
+        st.table(create_stat_styled_table(a, ctx_a, df))
 
     # --- RESZTA BEZ ZMIAN ---
     st.divider()
