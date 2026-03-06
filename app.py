@@ -161,35 +161,31 @@ def render_league_ui(df, league_name):
     ex_h.metric(f"ExG {h_team}", f"{lambda_f:.2f}")
     ex_a.metric(f"ExG {a_team}", f"{mu_f:.2f}")
 
-    # --- MODUŁ: PORÓWNANIE ZE ŚREDNIĄ LIGOWĄ (PROJEKT PLIK (1)) ---
+    # --- MODUŁ: PORÓWNANIE ZE ŚREDNIĄ LIGOWĄ (3 OPCJE WYBORU) ---
     st.divider()
     st.subheader("📊 Porównanie statystyk ze średnią ligową")
     
     stat_context = st.radio(
         "Wybierz zakres danych:",
-        ["Bez podziału", "Mecze Domowe/Wyjazdowe"],
+        ["Cały sezon", "Dom", "Wyjazd"],
         horizontal=True,
         key=f"context_{league_name}"
     )
 
     def color_stat(val, avg, is_defense=False):
-        """Funkcja do kolorowania: zielony dla lepszych niż średnia, czerwony dla gorszych."""
-        if not is_defense: # Dla Ataku/Goli strzelonych: im więcej tym lepiej
+        if not is_defense:
             color = "#28a745" if val >= avg else "#dc3545"
-        else: # Dla Obrony/Goli straconych: im mniej tym lepiej
+        else:
             color = "#28a745" if val <= avg else "#dc3545"
         return f'background-color: {color}; color: white; font-weight: bold'
 
-    def create_stat_styled_table(team_data, is_home, context, l_avg_gf, l_avg_ga):
-        if context == "Bez podziału":
+    def create_stat_styled_table(team_data, context, l_avg_gf, l_avg_ga):
+        if context == "Cały sezon":
             gf, ga, xgf, xga = team_data['T_GF'], team_data['T_GA'], team_data['TxG_F'], team_data['TxG_A']
-            header = "Cały sezon"
-        else:
-            gf = team_data['H_GF'] if is_home else team_data['A_GF']
-            ga = team_data['H_GA'] if is_home else team_data['A_GA']
-            xgf = team_data['HxG_F'] if is_home else team_data['AxG_F']
-            xga = team_data['HxG_A'] if is_home else team_data['AxG_A']
-            header = "Mecze Domowe" if is_home else "Mecze Wyjazdowe"
+        elif context == "Dom":
+            gf, ga, xgf, xga = team_data['H_GF'], team_data['H_GA'], team_data['HxG_F'], team_data['HxG_A']
+        else: # Wyjazd
+            gf, ga, xgf, xga = team_data['A_GF'], team_data['A_GA'], team_data['AxG_F'], team_data['AxG_A']
 
         df_stats = pd.DataFrame({
             "Statystyka": ["Gole Strzelone", "Gole Stracone", "xG (Atak)", "xG (Obrona)"],
@@ -197,25 +193,24 @@ def render_league_ui(df, league_name):
             "Średnia ligi": [l_avg_gf, l_avg_ga, l_avg_gf, l_avg_ga]
         })
 
-        # Aplikowanie kolorowania
         def apply_styling(row):
             is_def = "Stracone" in row["Statystyka"] or "Obrona" in row["Statystyka"]
             style = color_stat(row["Drużyna"], row["Średnia ligi"], is_def)
             return [None, style, None]
 
-        return df_stats.style.apply(apply_styling, axis=1).format("{:.2f}", subset=["Drużyna", "Średnia ligi"]), header
+        return df_stats.style.apply(apply_styling, axis=1).format("{:.2f}", subset=["Drużyna", "Średnia ligi"])
 
     col_stats_h, col_stats_a = st.columns(2)
     with col_stats_h:
         st.markdown(f"**{h_team}**")
-        styled_h, h_head = create_stat_styled_table(h, True, stat_context, avg_h_gf, avg_a_gf)
-        st.caption(h_head)
+        styled_h = create_stat_styled_table(h, stat_context, avg_h_gf, avg_a_gf)
+        st.caption(f"Zakres: {stat_context}")
         st.table(styled_h)
 
     with col_stats_a:
         st.markdown(f"**{a_team}**")
-        styled_a, a_head = create_stat_styled_table(a, False, stat_context, avg_h_gf, avg_a_gf)
-        st.caption(a_head)
+        styled_a = create_stat_styled_table(a, stat_context, avg_h_gf, avg_a_gf)
+        st.caption(f"Zakres: {stat_context}")
         st.table(styled_a)
 
     st.divider()
@@ -292,16 +287,6 @@ def render_league_ui(df, league_name):
             plt.xlim(-0.5, 8.5) 
             plt.legend()
             st.pyplot(fig2)
-            st.markdown("### 🔍 Wnioski")
-            col_w1, col_w2 = st.columns(2)
-            with col_w1:
-                st.write(f"🏠 Wygrane {h_team}: **{(sim_h > sim_a).sum():,}**")
-                st.write(f"🤝 Remisy: **{(sim_h == sim_a).sum():,}**")
-                st.write(f"🚀 Wygrane {a_team}: **{(sim_a > sim_h).sum():,}**")
-            with col_w2:
-                st.write(f"🔥 Over 4.5: **{(res_df['Total'] >= 4.5).sum():,}**")
-                st.write(f"🧤 Czyste konto {h_team}: **{(sim_a == 0).sum():,}**")
-                st.write(f"🥅 BTTS: TAK: **{((sim_h > 0) & (sim_a > 0)).sum():,}**")
             status.update(label="Analiza zakończona!", state="complete")
 
 with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
