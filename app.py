@@ -188,7 +188,6 @@ def render_league_ui(df, league_name):
     # --- 6. ANALIZA BTTS ---
     st.divider()
     st.subheader("🥅 Obie Drużyny Strzelą (BTTS)")
-    # BTTS TAK: suma prawdopodobieństw gdzie obie drużyny strzelają > 0 goli
     prob_btts_yes = sum(matrix[x, y] for x in range(1, max_g) for y in range(1, max_g))
     prob_btts_no = 1 - prob_btts_yes
     
@@ -199,6 +198,32 @@ def render_league_ui(df, league_name):
     with b2:
         st.markdown("**BTTS: NIE**")
         st.write(f"🔴 **Szanse**: {prob_btts_no:.1%} (k: {1/prob_btts_no:.2f})")
+
+    # --- 7. SYMULACJA MONTE CARLO (NOWOŚĆ) ---
+    st.divider()
+    st.subheader("🎲 Symulacja Meczu (Monte Carlo)")
+    if st.button(f"Rozegraj 10 000 meczów", key=f"sim_{league_name}"):
+        n_sim = 10000
+        sim_h = np.random.poisson(lambda_f, n_sim)
+        sim_a = np.random.poisson(mu_f, n_sim)
+        
+        # Zliczanie wyników
+        results = pd.DataFrame({'H': sim_h, 'A': sim_a})
+        results['Score'] = results['H'].astype(str) + ":" + results['A'].astype(str)
+        most_common = results['Score'].value_counts().idxmax()
+        mc_pct = (results['Score'].value_counts().max() / n_sim)
+        
+        st.info(f"Najczęstszy wynik w symulacji: **{most_common}** (wystąpił w {mc_pct:.1%} przypadków)")
+        
+        # Wykres rozkładu goli
+        fig2, ax2 = plt.subplots(figsize=(10, 4))
+        sns.histplot(sim_h, binwidth=1, color="blue", alpha=0.5, label=h_team, discrete=True)
+        sns.histplot(sim_a, binwidth=1, color="red", alpha=0.5, label=a_team, discrete=True)
+        plt.title("Rozkład prawdopodobieństwa goli (10k symulacji)")
+        plt.xlabel("Liczba goli")
+        plt.ylabel("Częstotliwość")
+        plt.legend()
+        st.pyplot(fig2)
 
 with tab_bl:
     render_league_ui(load_bundesliga(), "Bundesliga")
