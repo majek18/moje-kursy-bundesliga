@@ -6,7 +6,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 # --- KONFIGURACJA STRONY ---
-st.set_page_config(page_title="Bundesliga Predictor Pro (Raw Poisson)", layout="wide")
+st.set_page_config(page_title="Bundesliga Predictor Pro (Dixon-Coles Fixed)", layout="wide")
 
 # --- DANE BAZOWE ---
 @st.cache_data
@@ -34,6 +34,14 @@ def load_data():
 df = load_data()
 avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
 
+# --- FUNKCJA KOREKTY DIXONA-COLESA ---
+def dixon_coles_adjustment(x, y, l_h, m_a, rho):
+    if x == 0 and y == 0: return 1 - (l_h * m_a * rho)
+    if x == 0 and y == 1: return 1 + (l_h * rho)
+    if x == 1 and y == 0: return 1 + (m_a * rho)
+    if x == 1 and y == 1: return 1 - rho
+    return 1
+
 # --- SIDEBAR: KONFIGURACJA ---
 st.sidebar.header("⚙️ Konfiguracja")
 
@@ -58,8 +66,9 @@ if total_pct != 100:
 
 # --- LOGIKA OBLICZEŃ ---
 w0, w1, w2, w3 = v0/100, v1/100, v2/100, v3/100
+fixed_rho = -0.15
 
-st.title("⚽ Bundesliga Predictor Pro (Raw Poisson)")
+st.title("⚽ Bundesliga Predictor Pro (Dixon-Coles Fixed Rho)")
 
 col_a, col_b = st.columns(2)
 with col_a:
@@ -71,85 +80,42 @@ with col_b:
     a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
     st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
 
-# Pobranie danych drużyn
 h = df[df['Team'] == h_team].iloc[0]
 a = df[df['Team'] == a_team].iloc[0]
 
-# 1. Średnie ważone (Raw values)
 l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3)
 m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3)
 l_a_r = (a['AxG_F']*w0 + a['A_GF']*w1 + a['TxG_F']*w2 + a['T_GF']*w3)
 m_a_r = (a['AxG_A']*w0 + a['A_GA']*w1 + a['TxG_A']*w2 + a['T_GA']*w3)
 
-# 2. Współczynniki siły (Strengths)
 h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
 a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 
-# 3. Finalne parametry Poisson (Lambda i Mu)
 lambda_f = h_atk_s * a_def_s * avg_h_gf
 mu_f = a_atk_s * h_def_s * avg_a_gf
 
-# --- MODUŁ: ŚCIEŻKA OBLICZENIOWA ---
-with st.expander("🧮 Ścieżka Obliczeniowa (Jak powstał wynik?)"):
-    st.subheader("Krok 1: Średnie ważone goli i xG")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown(f"**{h_team} (Atak)**")
-        st.latex(rf"L_{{h}} = {l_h_r:.2f}")
-        st.markdown(f"**{h_team} (Obrona)**")
-        st.latex(rf"M_{{h}} = {m_h_r:.2f}")
-    with c2:
-        st.markdown(f"**{a_team} (Atak)**")
-        st.latex(rf"L_{{a}} = {l_a_r:.2f}")
-        st.markdown(f"**{a_team} (Obrona)**")
-        st.latex(rf"M_{{a}} = {m_a_r:.2f}")
-
-    st.subheader("Krok 2: Współczynniki siły (Strength)")
-    s1, s2 = st.columns(2)
-    with s1:
-        st.info(f"Atak {h_team}: {l_h_r:.2f} / {avg_h_gf:.2f} = **{h_atk_s:.2f}**")
-        st.info(f"Obrona {h_team}: {m_h_r:.2f} / {avg_a_gf:.2f} = **{h_def_s:.2f}**")
-    with s2:
-        st.info(f"Atak {a_team}: {l_a_r:.2f} / {avg_a_gf:.2f} = **{a_atk_s:.2f}**")
-        st.info(f"Obrona {a_team}: {m_a_r:.2f} / {avg_h_gf:.2f} = **{a_def_s:.2f}**")
-
-    st.subheader("Krok 3: Finalna prognoza goli (λ i μ)")
-    st.latex(rf"\lambda_{{gosp}} = {h_atk_s:.2f} \cdot {a_def_s:.2f} \cdot {avg_h_gf:.2f} = \mathbf{{{lambda_f:.2f}}}")
-    st.latex(rf"\mu_{{gość}} = {a_atk_s:.2f} \cdot {h_def_s:.2f} \cdot {avg_a_gf:.2f} = \mathbf{{{mu_f:.2f}}}")
-
-# --- MACIERZ I WYNIK ---
+# --- MACIERZ I WYNIK Z KOREKTĄ ---
 max_g = 12
-# Czysty rozkład Poissona bez korekty Dixon-Coles
-x_probs = poisson.pmf(np.arange(max_g), lambda_f)
-y_probs = poisson.pmf(np.arange(max_g), mu_f)
-matrix = np.outer(x_probs, y_probs)
+matrix = np.zeros((max_g, max_g))
+for x in range(max_g):
+    for y in range(max_g):
+        p = poisson.pmf(x, lambda_f) * poisson.pmf(y, mu_f)
+        # Zastosowanie korekty Dixona-Colesa z rho = -0.15
+        adj = dixon_coles_adjustment(x, y, lambda_f, mu_f, fixed_rho)
+        matrix[x, y] = p * adj
 
-p1 = np.sum(np.tril(matrix, -1))
-px = np.sum(np.diag(matrix))
-p2 = np.sum(np.triu(matrix, 1))
+# Normalizacja (suma musi być 100%)
+matrix /= matrix.sum()
 
-# --- WIDOK: 1X2 ---
+p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
+
+# --- WIZUALIZACJA ---
 st.divider()
 c1, c2, c3 = st.columns(3)
 c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
 c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
 c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
 
-# --- TABELA WSPÓŁCZYNNIKÓW ---
-st.write("### 📊 Współczynniki Siły Drużyn")
-def fmt_s(val, is_def=False):
-    diff = (val - 1)
-    color = "green" if (diff < 0 if is_def else diff > 0) else "red"
-    return f":{color}[{val:.2f} ({diff:+.0%})]"
-
-st.markdown(f"""
-| Drużyna | Atak (Strength) | Obrona (Strength) | Prognozowane Gole |
-| :--- | :--- | :--- | :--- |
-| **{h_team}** | {fmt_s(h_atk_s)} | {fmt_s(h_def_s, True)} | **{lambda_f:.2f}** |
-| **{a_team}** | {fmt_s(a_atk_s)} | {fmt_s(a_def_s, True)} | **{mu_f:.2f}** |
-""")
-
-# --- MACIERZ ---
 st.write("### ⚽ Macierz Prawdopodobieństwa (0-7 goli)")
 limit = 8
 fig, ax = plt.subplots(figsize=(10, 5))
@@ -157,7 +123,7 @@ sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=Fal
 plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
 st.pyplot(fig)
 
-# --- UNDER/OVER ---
+# --- ANALIZA UNDER/OVER ---
 st.divider()
 st.subheader("📉 Analiza Under / Over")
 lines = [1.5, 2.5, 3.5, 4.5]
