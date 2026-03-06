@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Bundesliga Predictor Pro", layout="wide")
 
-# --- DANE BAZOWE (Twoje statystyki z pliku) ---
+# --- DANE BAZOWE ---
 @st.cache_data
 def load_data():
     data = {
@@ -19,7 +19,7 @@ def load_data():
         'T_GF': [3.67, 2.13, 2.04, 2.00, 1.92, 1.88, 2.00, 1.42, 1.25, 1.21, 1.08, 1.13, 1.38, 1.13, 0.96, 1.04, 1.38, 0.92],
         'T_GA': [0.96, 1.04, 1.29, 1.33, 1.38, 1.21, 2.04, 1.63, 1.71, 1.58, 1.46, 1.63, 1.71, 1.63, 1.67, 1.83, 2.21, 2.21],
         'HxG_F': [3.43, 2.00, 2.07, 2.11, 2.65, 2.26, 1.69, 1.86, 1.31, 1.51, 1.59, 1.46, 1.51, 1.92, 1.00, 1.60, 1.52, 1.47],
-        'HxG_A': [1.04, 1.23, 1.28, 1.35, 1.51, 0.92, 1.26, 1.07, 1.67, 1.31, 1.58, 1.73, 1.65, 1.53, 1.54, 1.36, 1.36, 1.36], # Uśrednione brakujące
+        'HxG_A': [1.04, 1.23, 1.28, 1.35, 1.51, 0.92, 1.26, 1.07, 1.67, 1.31, 1.58, 1.73, 1.65, 1.53, 1.54, 1.36, 1.84, 2.06],
         'TxG_F': [3.07, 1.85, 1.85, 1.96, 2.20, 2.02, 1.56, 1.42, 1.25, 1.42, 1.32, 1.43, 1.45, 1.63, 0.97, 1.32, 1.41, 1.36],
         'TxG_A': [1.13, 1.32, 1.59, 1.40, 1.42, 1.27, 1.61, 1.52, 1.88, 1.46, 1.72, 1.63, 1.89, 1.90, 1.83, 1.72, 1.96, 2.22],
         'A_GF': [3.33, 1.92, 1.83, 2.25, 1.58, 1.67, 2.17, 1.00, 1.18, 1.00, 0.64, 1.08, 1.00, 1.17, 0.77, 0.92, 1.17, 0.75],
@@ -37,26 +37,34 @@ avg_a_gf = df['A_GF'].mean()
 # --- SIDEBAR: KONFIGURACJA WAG ---
 st.sidebar.header("⚖️ Konfiguracja Wag")
 
-# Domyślne wagi zgodnie z ustaleniami
-D_W0, D_W1, D_W2, D_W3 = 0.40, 0.30, 0.20, 0.10
+# Definicja domyślnych wartości
+D_W = [0.40, 0.30, 0.20, 0.10]
 
+# Inicjalizacja stanu sesji, jeśli nie istnieje
+if 's0' not in st.session_state: st.session_state.s0 = D_W[0]
+if 's1' not in st.session_state: st.session_state.s1 = D_W[1]
+if 's2' not in st.session_state: st.session_state.s2 = D_W[2]
+if 's3' not in st.session_state: st.session_state.s3 = D_W[3]
+
+# NAPRAWIONY PRZYCISK RESETU
 if st.sidebar.button("🔄 Resetuj wagi do domyślnych"):
-    for k in ['s0','s1','s2','s3']: 
-        if k in st.session_state: del st.session_state[k]
+    st.session_state.s0 = D_W[0]
+    st.session_state.s1 = D_W[1]
+    st.session_state.s2 = D_W[2]
+    st.session_state.s3 = D_W[3]
     st.rerun()
 
-w0 = st.sidebar.slider("🏠 Gole Dom/Wyjazd", 0.0, 1.0, D_W0, key='s0')
-w1 = st.sidebar.slider("🌍 Gole Cały Sezon", 0.0, 1.0, D_W1, key='s1')
-w2 = st.sidebar.slider("✈️ xG Dom/Wyjazd", 0.0, 1.0, D_W2, key='s2')
-w3 = st.sidebar.slider("📈 xG Cały Sezon", 0.0, 1.0, D_W3, key='s3')
+w0 = st.sidebar.slider("🏠 Gole Dom/Wyjazd", 0.0, 1.0, key='s0')
+w1 = st.sidebar.slider("🌍 Gole Cały Sezon", 0.0, 1.0, key='s1')
+w2 = st.sidebar.slider("✈️ xG Dom/Wyjazd", 0.0, 1.0, key='s2')
+w3 = st.sidebar.slider("📈 xG Cały Sezon", 0.0, 1.0, key='s3')
 
 total_w = round(w0 + w1 + w2 + w3, 2)
 color = "green" if total_w == 1.0 else "red"
 st.sidebar.markdown(f"### Suma wag: :{color}[{total_w:.0%}]")
 
 if total_w != 1.0:
-    st.sidebar.error(f"Suma wag wynosi {total_w:.0%}. Musi być dokładnie 100%!")
-    st.warning("⚠️ Skoryguj suwaki powyżej, aby zobaczyć analizę meczu.")
+    st.sidebar.error(f"Suma wynosi {total_w:.0%}. Skoryguj do 100%!")
     st.stop()
 
 # --- WYBÓR MECZU ---
@@ -67,11 +75,11 @@ with c1:
     h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
     st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
 with c2:
-    a_team = st.selectbox("Gość", df['Team'], index=11) # Borussia M.Gladbach
+    a_team = st.selectbox("Gość", df['Team'], index=11)
     a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
     st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
 
-# --- OBLICZENIA SIŁY (LOGIKA TWOJA) ---
+# --- OBLICZENIA SIŁY ---
 h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
 
 h_atk_r = (h['H_GF']*w0 + h['T_GF']*w1 + h['HxG_F']*w2 + h['TxG_F']*w3)
@@ -105,9 +113,7 @@ matrix = np.outer(poisson.pmf(range(7), lambda_h), poisson.pmf(range(7), mu_a))
 matrix /= matrix.sum()
 p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
 
-st.write("### 🏦 Porównaj z Realnymi Kursami")
-st.caption("Wpisz kursy aktualnego meczu, aby sprawdzić opłacalność (Value).")
-
+st.write("### 🏦 Analiza Opłacalności (Value Bet)")
 cin1, cin2, cin3 = st.columns(3)
 with cin1: bk1 = st.text_input(f"Kurs na {h_team} (1)", placeholder="np. 1.45")
 with cin2: bkx = st.text_input("Kurs na Remis (X)", placeholder="np. 4.20")
@@ -122,14 +128,15 @@ def check_v(prob, b_k):
     except: return "-"
 
 res_df = pd.DataFrame({
-    "Typ": ["1 (Zwycięstwo Dom)", "X (Remis)", "2 (Zwycięstwo Wyjazd)"],
-    "Twoje Szanse": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"],
-    "Twój Kurs Fair": [f"{1/p1:.2f}", f"{1/px:.2f}", f"{1/p2:.2f}"],
+    "Typ": ["1 (Gospodarz)", "X (Remis)", "2 (Gość)"],
+    "Szanse Modelu": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"],
+    "Kurs Fair": [f"{1/p1:.2f}", f"{1/px:.2f}", f"{1/p2:.2f}"],
     "Value?": [check_v(p1, bk1), check_v(px, bkx), check_v(p2, bk2)]
 })
 st.table(res_df)
 
-with st.expander("Zobacz macierz prawdopodobieństwa (dokładne wyniki)"):
+with st.expander("Zobacz macierz prawdopodobieństwa"):
+    
     fig, ax = plt.subplots(figsize=(10, 4))
     sns.heatmap(matrix, annot=True, fmt=".1%", cmap="YlGnBu", cbar=False)
     plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
