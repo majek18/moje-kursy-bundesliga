@@ -8,15 +8,26 @@ import matplotlib.pyplot as plt
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Bundesliga Predictor Pro", layout="wide")
 
-# Poprawiony blok CSS (rozwiązuje błąd z linii 11)
+# POPRAWIONY BLOK CSS (Naprawia błąd TypeError z linii 11/12)
 st.markdown("""
-    <style>
-    .stMetric { background-color: #1a1c24; padding: 15px; border-radius: 10px; border: 1px solid #3d414d; }
-    .calc-box { background-color: #262730; padding: 20px; border-radius: 10px; border-left: 5px solid #ff4b4b; margin-bottom: 20px; }
-    </style>
-    """, unsafe_allow_stdio=True)
+<style>
+    .stMetric {
+        background-color: #1a1c24;
+        padding: 15px;
+        border-radius: 10px;
+        border: 1px solid #3d414d;
+    }
+    .calc-box {
+        background-color: #262730;
+        padding: 20px;
+        border-radius: 10px;
+        border-left: 5px solid #ff4b4b;
+        margin-bottom: 20px;
+    }
+</style>
+""", unsafe_allow_stdio=True)
 
-# --- DANE BAZOWE (Zgodne z Twoim arkuszem Excel) ---
+# --- DANE BAZOWE (Zsynchronizowane z Twoim Excelem) ---
 @st.cache_data
 def load_data():
     data = {
@@ -37,11 +48,11 @@ def load_data():
 
 df = load_data()
 
-# Stałe bazowe z Twojego Excela
+# STAŁE Z EXCELA
 BASE_H = 1.75
 BASE_A = 1.41
 
-# --- FUNKCJE OBLICZENIOWE ---
+# --- FUNKCJA DIXONA-COLESA ---
 def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 0 and y == 0: return 1 - (l_h * m_a * rho)
     if x == 0 and y == 1: return 1 + (l_h * rho)
@@ -50,14 +61,14 @@ def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     return 1
 
 # --- SIDEBAR: KONFIGURACJA WAG ---
-st.sidebar.header("⚙️ Parametry Modelu")
+st.sidebar.header("⚙️ Konfiguracja Wag")
 rho = st.sidebar.slider("Dixon-Coles (rho)", 0.0, 0.2, 0.1, 0.01)
 
-st.sidebar.subheader("⚖️ Wagi Obliczeń")
-v0 = st.sidebar.selectbox("🎯 xG Sezon (D/W) %", range(0, 105, 5), index=9) # 45%
-v1 = st.sidebar.selectbox("⚽ Gole Sezon (D/W) %", range(0, 105, 5), index=6) # 30%
-v2 = st.sidebar.selectbox("📊 xG Sezon (cały) %", range(0, 105, 5), index=3) # 15%
-v3 = st.sidebar.selectbox("📉 Gole Sezon (cały) %", range(0, 105, 5), index=2) # 10%
+# Ustawienie domyślnych wag zgodnie z Twoim Resetem (45/30/15/10)
+v0 = st.sidebar.selectbox("🎯 xG Sezon D/W %", range(0, 105, 5), index=9) # 45
+v1 = st.sidebar.selectbox("⚽ Gole Sezon D/W %", range(0, 105, 5), index=6) # 30
+v2 = st.sidebar.selectbox("📊 xG Cały Sezon %", range(0, 105, 5), index=3) # 15
+v3 = st.sidebar.selectbox("📉 Gole Cały Sezon %", range(0, 105, 5), index=2) # 10
 
 if (v0 + v1 + v2 + v3) != 100:
     st.sidebar.error("Suma wag musi wynosić 100%!")
@@ -65,43 +76,43 @@ if (v0 + v1 + v2 + v3) != 100:
 
 w0, w1, w2, w3 = v0/100, v1/100, v2/100, v3/100
 
-# --- WYBÓR DRUŻYN ---
-st.title("⚽ Bundesliga Predictor Pro")
+# --- WYBÓR MECZU ---
+st.title("⚽ Bundesliga Predictor Pro (Dixon-Coles)")
 col_a, col_b = st.columns(2)
 with col_a:
-    h_team = st.selectbox("Gospodarz", df['Team'], index=0)
+    h_team = st.selectbox("Gospodarz (Drużyna A)", df['Team'], index=0)
     h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
-    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
+    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=80)
 with col_b:
-    a_team = st.selectbox("Gość", df['Team'], index=11)
+    a_team = st.selectbox("Gość (Drużyna B)", df['Team'], index=11) # M.Gladbach
     a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
-    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
+    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=80)
 
 h = df[df['Team'] == h_team].iloc[0]
 a = df[df['Team'] == a_team].iloc[0]
 
-# --- LOGIKA EXCEL (Kropka w kropkę) ---
-# Sumy goli
+# --- LOGIKA OBLICZEŃ (IDENTYCZNA Z EXCELEM) ---
+# 1. Sumy goli
 h_atk_sum = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3)
 h_def_sum = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3)
 a_atk_sum = (a['TxG_F']*w0 + a['T_GF']*w1 + a['HxG_F']*w2 + h['H_GF']*w3)
 a_def_sum = (a['TxG_A']*w0 + a['T_GA']*w1 + a['HxG_A']*w2 + h['H_GA']*w3)
 
-# Współczynniki siły
+# 2. Współczynniki siły (Dzielenie przez stałe bazowe)
 h_str_atk = h_atk_sum / BASE_H
 h_str_def = h_def_sum / BASE_A
 a_str_atk = a_atk_sum / BASE_A
 a_str_def = a_def_sum / BASE_H
 
-# Surowa Lambda
+# 3. Surowa Lambda
 lambda_h = h_str_atk * a_str_def * BASE_H
 lambda_a = a_str_atk * h_str_def * BASE_A
 
 # --- TRANSPARENTNE OBLICZENIA ---
-with st.expander("🔍 Zobacz proces obliczeniowy (Zgodnie z Excel)"):
-    st.markdown("### Krok 1: Sumy Goli (Atak/Obrona)")
-    st.write(f"**{h_team} (H):** Atak: **{h_atk_sum:.2f}**, Obrona: **{h_def_sum:.2f}**")
-    st.write(f"**{a_team} (A):** Atak: **{a_atk_sum:.2f}**, Obrona: **{a_def_sum:.2f}**")
+with st.expander("🔍 Obliczenia krok po kroku (Zgodność z Excel)"):
+    st.markdown("### Krok 1: Sumy Goli")
+    st.write(f"**{h_team}** -> Atak: {h_atk_sum:.2f} | Obrona: {h_def_sum:.2f}")
+    st.write(f"**{a_team}** -> Atak: {a_atk_sum:.2f} | Obrona: {a_def_sum:.2f}")
     
     st.markdown("### Krok 2: Współczynniki Siły")
     st.latex(rf"Atak_{{str\_H}} = {h_atk_sum:.2f} / {BASE_H} = {h_str_atk:.2f}")
@@ -110,10 +121,11 @@ with st.expander("🔍 Zobacz proces obliczeniowy (Zgodnie z Excel)"):
     st.markdown("### Krok 3: Surowa Lambda")
     st.latex(rf"\lambda_H = {h_str_atk:.2f} \cdot {a_str_def:.2f} \cdot {BASE_H} = {lambda_h:.2f}")
 
-# --- MACIERZ I KURSY ---
-matrix = np.zeros((10, 10))
-for x in range(10):
-    for y in range(10):
+# --- WIDOK WYNIKÓW ---
+max_g = 10
+matrix = np.zeros((max_g, max_g))
+for x in range(max_g):
+    for y in range(max_g):
         p = poisson.pmf(x, lambda_h) * poisson.pmf(y, lambda_a)
         matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_h, lambda_a, rho)
 matrix /= matrix.sum()
@@ -122,12 +134,12 @@ p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.tri
 
 st.divider()
 c1, c2, c3 = st.columns(3)
-c1.metric(f"1 ({h_team})", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
-c2.metric("X (Remis)", f"{px:.1%}", f"Kurs: {1/px:.2f}")
-c3.metric(f"2 ({a_team})", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
+c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
+c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
+c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
 
-# Wizualizacja macierzy
+# Macierz wizualna
 fig, ax = plt.subplots(figsize=(10, 4))
-sns.heatmap(matrix[:6, :6], annot=True, fmt=".2%", cmap="YlGnBu")
+sns.heatmap(matrix[:6, :6], annot=True, fmt=".2%", cmap="YlGnBu", cbar=False)
 plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
 st.pyplot(fig)
