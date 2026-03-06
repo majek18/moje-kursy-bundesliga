@@ -34,15 +34,13 @@ df = load_data()
 AVG_H_GF = df['H_GF'].mean()
 AVG_A_GF = df['A_GF'].mean()
 
-# --- WAGI ---
+# --- KONFIGURACJA WAG ---
 st.sidebar.header("⚖️ Konfiguracja Wag")
 DEFAULT_W = [0.40, 0.30, 0.20, 0.10]
 
-# Obsługa przycisku resetu bez wywalania błędu
-if st.sidebar.button("🔄 Resetuj do domyślnych"):
+if st.sidebar.button("🔄 Resetuj tylko wagi"):
     for key in ['w_dom', 'w_sezon', 'w_xg_dom', 'w_xg_sezon']:
-        if key in st.session_state:
-            del st.session_state[key]
+        if key in st.session_state: del st.session_state[key]
     st.rerun()
 
 if 'w_dom' not in st.session_state: st.session_state['w_dom'] = DEFAULT_W[0]
@@ -54,11 +52,10 @@ def sync_weights(changed_key):
     keys = ['w_dom', 'w_sezon', 'w_xg_dom', 'w_xg_sezon']
     remaining = [k for k in keys if k != changed_key]
     new_val = st.session_state[changed_key]
-    old_total_others = sum(st.session_state[k] for k in remaining)
+    old_others = sum(st.session_state[k] for k in remaining)
     target_others = 1.0 - new_val
-    if old_total_others > 0:
-        for k in remaining:
-            st.session_state[k] = (st.session_state[k] / old_total_others) * target_others
+    if old_others > 0:
+        for k in remaining: st.session_state[k] = (st.session_state[k] / old_others) * target_others
     else:
         for k in remaining: st.session_state[k] = target_others / 3
 
@@ -67,24 +64,21 @@ st.sidebar.slider("🌍 Gole Cały Sezon", 0.0, 1.0, key='w_sezon', on_change=sy
 st.sidebar.slider("✈️ xG Dom/Wyjazd", 0.0, 1.0, key='w_xg_dom', on_change=sync_weights, args=('w_xg_dom',))
 st.sidebar.slider("📈 xG Cały Sezon", 0.0, 1.0, key='w_xg_sezon', on_change=sync_weights, args=('w_xg_sezon',))
 
-# --- UI ---
-st.title("⚽ Bundesliga Match Predictor")
+# --- WYBÓR MECZU ---
+st.title("⚽ Bundesliga Predictor Pro")
 c1, c2 = st.columns(2)
-
 with c1:
     h_team = st.selectbox("Gospodarz", df['Team'], index=0)
     h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
-    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=120)
-
+    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
 with c2:
     a_team = st.selectbox("Gość", df['Team'], index=1)
     a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
-    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=120)
+    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
 
-# --- OBLICZENIA ---
+# --- OBLICZENIA SIŁY ---
 h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
 w = st.session_state
-
 h_atk_r = (h['H_GF']*w.w_dom + h['T_GF']*w.w_sezon + h['HxG_F']*w.w_xg_dom + h['TxG_F']*w.w_xg_sezon)
 h_def_r = (h['H_GA']*w.w_dom + h['T_GA']*w.w_sezon + h['HxG_A']*w.w_xg_dom + h['TxG_A']*w.w_xg_sezon)
 a_atk_r = (a['A_GF']*w.w_dom + a['T_GF']*w.w_sezon + a['AxG_F']*w.w_xg_dom + a['TxG_F']*w.w_xg_sezon)
@@ -92,38 +86,55 @@ a_def_r = (a['A_GA']*w.w_dom + a['T_GA']*w.w_sezon + a['AxG_A']*w.w_xg_dom + a['
 
 h_atk_s, h_def_s = (h_atk_r / AVG_H_GF) - 1, (h_def_r / AVG_A_GF) - 1
 a_atk_s, a_def_s = (a_atk_r / AVG_A_GF) - 1, (a_def_r / AVG_H_GF) - 1
-
 lambda_h = (h_atk_s + 1) * (a_def_s + 1) * AVG_H_GF
 mu_a = (a_atk_s + 1) * (h_def_s + 1) * AVG_A_GF
 
-# --- WIDOK ---
+# --- TABELA SIŁY (WIZUALIZACJA) ---
 st.divider()
-res_c1, res_c2 = st.columns(2)
-with res_c1:
-    st.write("### 📊 Siła Ataku / Obrony")
-    def color_val(v, t='atk'):
-        c = "green" if (v > 0 if t=='atk' else v < 0) else "red"
-        return f":{c}[{v:+.1%}]"
-    st.markdown(f"**{h_team}**: Atak {color_val(h_atk_s)} | Obrona {color_val(h_def_s, 'def')}")
-    st.markdown(f"**{a_team}**: Atak {color_val(a_atk_s)} | Obrona {color_val(a_def_s, 'def')}")
+st.write("### 📊 Współczynniki Siły Zespołów")
+def fmt_pct(v, inv=False):
+    cond = (v < 0 if inv else v > 0)
+    color = "green" if cond else "red"
+    return f":{color}[{v:+.1%}]"
 
-with res_c2:
-    st.write("### 🎯 Prognozowane xG")
-    st.metric(h_team, f"{lambda_h:.2f}")
-    st.metric(a_team, f"{mu_a:.2f}")
+st.markdown(f"""
+| Drużyna | Atak (vs średnia ligi) | Obrona (vs średnia ligi) | Prognozowane Gole |
+| :--- | :--- | :--- | :--- |
+| **{h_team}** | {fmt_pct(h_atk_s)} | {fmt_pct(h_def_s, True)} | **{lambda_h:.2f}** |
+| **{a_team}** | {fmt_pct(a_atk_s)} | {fmt_pct(a_def_s, True)} | **{mu_a:.2f}** |
+""")
 
-# Macierz i kursy
+# --- MACIERZ ---
 matrix = np.outer(poisson.pmf(range(7), lambda_h), poisson.pmf(range(7), mu_a))
 matrix /= matrix.sum()
-
-st.write("### 🟦 Macierz prawdopodobieństwa")
 fig, ax = plt.subplots(figsize=(10, 4))
-sns.heatmap(matrix, annot=True, fmt=".1%", cmap="Blues", cbar=False)
+sns.heatmap(matrix, annot=True, fmt=".1%", cmap="YlGnBu", cbar=False)
 plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
 st.pyplot(fig)
 
+# --- PORÓWNANIE KURSÓW ---
+st.divider()
+st.write("### 🏦 Porównywarka Kursów i Analiza Opłacalności")
 wh, dr, wa = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
-k1, kx, k2 = st.columns(3)
-k1.metric("1", f"{wh:.1%}", f"Kurs: {1/wh:.2f}")
-kx.metric("X", f"{dr:.1%}", f"Kurs: {1/dr:.2f}")
-k2.metric("2", f"{wa:.1%}", f"Kurs: {1/wa:.2f}")
+my_k1, my_kx, my_k2 = 1/wh, 1/dr, 1/wa
+
+# Przykładowe kursy bukmacherów (można edytować ręcznie w kodzie lub dodać pola input)
+bookies = {
+    "Twoja Symulacja": [my_k1, my_kx, my_k2],
+    "STS": [1.45, 4.50, 6.20],
+    "Fortuna": [1.42, 4.65, 6.50],
+    "Betclic": [1.48, 4.40, 5.90]
+}
+
+comparison_data = []
+for name, odds in bookies.items():
+    comparison_data.append({
+        "Bukmacher": name,
+        f"1 ({h_team})": f"{odds[0]:.2f}",
+        "X (Remis)": f"{odds[1]:.2f}",
+        f"2 ({a_team})": f"{odds[2]:.2f}",
+        "Value?": "---" if name == "Twoja Symulacja" else ("TAK" if any(odds[i] > [my_k1, my_kx, my_k2][i] for i in range(3)) else "NIE")
+    })
+
+st.table(pd.DataFrame(comparison_data))
+st.info("💡 **Value** pojawia się, gdy kurs bukmachera jest wyższy niż Twój kurs wyliczony matematycznie.")
