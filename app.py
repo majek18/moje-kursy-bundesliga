@@ -34,21 +34,21 @@ def load_data():
 df = load_data()
 avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
 
-# --- FUNKCJA DIXONA-COLESA (Poprawione znaki dla dodatniego rho) ---
+# --- PARAMETRY STAŁE ---
+rho = 0.1  # Parametr korelacji Dixon-Coles
+
+# --- FUNKCJA DIXONA-COLESA ---
 def dixon_coles_adjustment(x, y, l_h, m_a, rho):
-    if x == 0 and y == 0: return 1 + (l_h * m_a * rho)  # Podbicie 0:0
-    if x == 0 and y == 1: return 1 - (l_h * rho)       # Korekta 0:1
-    if x == 1 and y == 0: return 1 - (m_a * rho)       # Korekta 1:0
-    if x == 1 and y == 1: return 1 + rho               # Korekta 1:1
+    if x == 0 and y == 0: return 1 + (l_h * m_a * rho)
+    if x == 0 and y == 1: return 1 - (l_h * rho)
+    if x == 1 and y == 0: return 1 - (m_a * rho)
+    if x == 1 and y == 1: return 1 + rho
     return 1
 
-# --- SIDEBAR: KONFIGURACJA ---
-st.sidebar.header("⚙️ Konfiguracja")
-rho = st.sidebar.slider("Parametr Dixon-Coles (rho)", 0.0, 0.3, 0.1, 0.01)
-
+# --- SIDEBAR: KONFIGURACJA WAG ---
+st.sidebar.header("⚙️ Konfiguracja Wag")
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 def reset_weights(): st.session_state.reset_counter += 1
-
 st.sidebar.button("🔄 Resetuj wagi (40/25/20/15)", on_click=reset_weights)
 
 options = [i for i in range(0, 105, 5)]
@@ -57,14 +57,13 @@ v1 = st.sidebar.selectbox("⚽ Gole Sezon D/W %", options, index=options.index(2
 v2 = st.sidebar.selectbox("📊 xG Cały Sezon %", options, index=options.index(20), key=f"w2_{st.session_state.reset_counter}")
 v3 = st.sidebar.selectbox("📉 Gole Cały Sezon %", options, index=options.index(15), key=f"w3_{st.session_state.reset_counter}")
 
-total_pct = v0 + v1 + v2 + v3
-if total_pct != 100: 
+if (v0 + v1 + v2 + v3) != 100:
     st.sidebar.error("Suma wag musi wynosić 100%!")
     st.stop()
 
-# --- LOGIKA OBLICZEŃ ---
+# --- LOGIKA ---
 w0, w1, w2, w3 = v0/100, v1/100, v2/100, v3/100
-st.title("⚽ Bundesliga Predictor Pro (Dixon-Coles)")
+st.title("⚽ Bundesliga Predictor Pro")
 
 col_a, col_b = st.columns(2)
 with col_a:
@@ -89,34 +88,22 @@ a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 lambda_f = h_atk_s * a_def_s * avg_h_gf
 mu_f = a_atk_s * h_def_s * avg_a_gf
 
-# --- MODUŁ: ŚCIEŻKA OBLICZENIOWA ---
-with st.expander("🧮 Ścieżka Obliczeniowa (Analiza parametrów i modelu Dixon-Coles)"):
-    st.subheader("Krok 1: Wyliczanie λ (Gospodarz) i μ (Gość)")
-    st.latex(rf"\lambda = {lambda_f:.2f}, \quad \mu = {mu_f:.2f}")
-
-    st.subheader("Krok 2: Prawdopodobieństwo bramek (Rozkład Poissona)")
+# --- ŚCIEŻKA OBLICZENIOWA ---
+with st.expander("🧮 Analiza Matematyczna"):
+    st.subheader("1. Prawdopodobieństwo Poisson (Niezależne)")
     g_range = range(6)
     h_p = [poisson.pmf(k, lambda_f) for k in g_range]
     a_p = [poisson.pmf(k, mu_f) for k in g_range]
-    
-    dist_df = pd.DataFrame({
-        "Gole": g_range,
-        f"{h_team} (Poisson)": [f"{p:.2%}" for p in h_p],
-        f"{a_team} (Poisson)": [f"{p:.2%}" for p in a_p]
-    }).set_index("Gole")
-    st.table(dist_df.T)
+    st.table(pd.DataFrame({"Gole": g_range, h_team: [f"{p:.2%}" for p in h_p], a_team: [f"{p:.2%}" for p in a_p]}).set_index("Gole").T)
 
-    st.subheader("Krok 3: Korekta Dixon-Coles (Poprawione podbicie 0:0)")
-    p_h0, p_a0 = poisson.pmf(0, lambda_f), poisson.pmf(0, mu_f)
-    pure_00 = p_h0 * p_a0
+    st.subheader("2. Korekta Dixon-Coles i Normalizacja")
+    raw_00 = poisson.pmf(0, lambda_f) * poisson.pmf(0, mu_f)
     adj_00 = dixon_coles_adjustment(0, 0, lambda_f, mu_f, rho)
-    
-    st.write(f"Czysty Poisson (0,0): `{p_h0:.2%}` × `{p_a0:.2%}` = **{pure_00:.2%}**")
-    st.write(f"Zastosowany mnożnik podbijający: $1 + (\\lambda \\times \\mu \\times \\rho)$")
-    st.latex(rf"Mnożnik = 1 + ({lambda_f:.2f} \times {mu_f:.2f} \times {rho}) = \mathbf{{{adj_00:.4f}}}")
-    st.success(f"Finalne 0:0 po podbiciu: {pure_00:.2%} × {adj_00:.4f} = **{(pure_00 * adj_00):.2%}**")
+    st.write(f"Surowy wynik 0:0: **{raw_00:.2%}**")
+    st.write(f"Mnożnik korygujący: **{adj_00:.4f}**")
+    st.info("Po korekcie wszystkich pól macierz jest naciągana (normalizowana) do 100%.")
 
-# --- MACIERZ I WYNIKI ---
+# --- MACIERZ ---
 max_g = 12
 matrix = np.zeros((max_g, max_g))
 for x in range(max_g):
@@ -124,9 +111,15 @@ for x in range(max_g):
         p = poisson.pmf(x, lambda_f) * poisson.pmf(y, mu_f)
         matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_f, mu_f, rho)
 
-matrix /= matrix.sum()
+# --- NORMALIZACJA (To o co prosiłeś - naciąganie do 100%) ---
+total_sum_before = matrix.sum()
+matrix /= total_sum_before 
+total_sum_after = matrix.sum()
 
-p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
+# --- WYNIKI 1X2 ---
+p1 = np.sum(np.tril(matrix, -1))
+px = np.sum(np.diag(matrix))
+p2 = np.sum(np.triu(matrix, 1))
 
 st.divider()
 c1, c2, c3 = st.columns(3)
@@ -134,9 +127,24 @@ c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
 c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
 c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
 
-st.write("### ⚽ Macierz Prawdopodobieństwa")
+# --- WIZUALIZACJA ---
+st.write(f"### ⚽ Macierz Wyników (Suma: {total_sum_after:.0%})")
 limit = 8
 fig, ax = plt.subplots(figsize=(10, 5))
 sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
 plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
 st.pyplot(fig)
+
+# --- UNDER/OVER ---
+st.divider()
+st.subheader("📉 Analiza Under / Over")
+lines = [1.5, 2.5, 3.5, 4.5]
+ou_cols = st.columns(len(lines))
+for i, line in enumerate(lines):
+    u_p = sum(matrix[x, y] for x in range(max_g) for y in range(max_g) if x + y < line)
+    o_p = 1 - u_p
+    with ou_cols[i]:
+        st.markdown(f"**Linia {line}**")
+        st.write(f"🟢 **OVER**: {o_p:.1%}")
+        st.write(f"🔴 **UNDER**: {u_p:.1%}")
+        st.progress(o_p)
