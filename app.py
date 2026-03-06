@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
 from scipy.stats import poisson
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -157,52 +156,38 @@ def render_league_ui(df, league_name):
     c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/max(px, 0.001):.2f}")
     c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/max(p2, 0.001):.2f}")
 
-    # --- MODUŁ: WYKRES PAJĘCZYNOWY (RADAR CHART) ---
+    # --- NOWA TABELA PORÓWNAWCZA (ZAMIAST RADARU) ---
     st.divider()
-    st.markdown("### 🧬 Profil Taktyczny Zespołów")
+    st.markdown("### 📊 Szczegółowe Porównanie Statystyk (vs Średnia Ligowa)")
     
-    # Przygotowanie danych do radaru (Normalizacja vs Średnia ligowa)
-    categories = ['Atak (Gole)', 'Atak (xG)', 'Obrona (Gole)', 'Obrona (xG)', 'Skuteczność Ogólna']
+    stats_data = {
+        'Statystyka': ['Gole Strzelone (Śr)', 'xG Strzelone (Śr)', 'Gole Stracone (Śr)', 'xG Stracone (Śr)'],
+        h_team: [h['T_GF'], h['TxG_F'], h['T_GA'], h['TxG_A']],
+        a_team: [a['T_GF'], a['TxG_F'], a['T_GA'], a['TxG_A']],
+        'Średnia Ligi': [df['T_GF'].mean(), df['TxG_F'].mean(), df['T_GA'].mean(), df['TxG_A'].mean()]
+    }
     
-    # Skale: Im wyższa wartość, tym lepiej. Dla obrony odwracamy (lepiej mieć mało straconych)
-    h_radar = [
-        h['T_GF'] / df['T_GF'].mean(),
-        h['TxG_F'] / df['TxG_F'].mean(),
-        df['T_GA'].mean() / h['T_GA'],
-        df['TxG_A'].mean() / h['TxG_A'],
-        (h['T_GF'] + h['TxG_F']) / (df['T_GF'].mean() + df['TxG_F'].mean())
-    ]
+    comp_df = pd.DataFrame(stats_data)
     
-    a_radar = [
-        a['T_GF'] / df['T_GF'].mean(),
-        a['TxG_F'] / df['TxG_F'].mean(),
-        df['T_GA'].mean() / a['T_GA'],
-        df['TxG_A'].mean() / a['TxG_A'],
-        (a['T_GF'] + a['TxG_F']) / (df['T_GF'].mean() + df['TxG_F'].mean())
-    ]
+    def highlight_stats(row):
+        colors = [''] * len(row)
+        stat_name = row['Statystyka']
+        avg = row['Średnia Ligi']
+        
+        # Indeksy kolumn zespołów to 1 i 2
+        for i in [1, 2]:
+            val = row.iloc[i]
+            # Zasada: Im więcej tym lepiej (Atak)
+            if 'Strzelone' in stat_name:
+                if val > avg: colors[i] = 'background-color: rgba(0, 255, 0, 0.2)'
+                elif val < avg: colors[i] = 'background-color: rgba(255, 0, 0, 0.2)'
+            # Zasada: Im mniej tym lepiej (Obrona)
+            elif 'Stracone' in stat_name:
+                if val < avg: colors[i] = 'background-color: rgba(0, 255, 0, 0.2)'
+                elif val > avg: colors[i] = 'background-color: rgba(255, 0, 0, 0.2)'
+        return colors
 
-    fig_radar = go.Figure()
-    fig_radar.add_trace(go.Scatterpolar(
-        r=h_radar, theta=categories, fill='toself', name=h_team,
-        line_color='#1f77b4', fillcolor='rgba(31, 119, 180, 0.3)'
-    ))
-    fig_radar.add_trace(go.Scatterpolar(
-        r=a_radar, theta=categories, fill='toself', name=a_team,
-        line_color='#ff7f0e', fillcolor='rgba(255, 127, 14, 0.3)'
-    ))
-    
-    fig_radar.update_layout(
-        polar=dict(
-            radialaxis=dict(visible=True, range=[0, max(max(h_radar), max(a_radar)) + 0.2]),
-            bgcolor="rgba(0,0,0,0)"
-        ),
-        showlegend=True,
-        margin=dict(l=80, r=80, t=20, b=20),
-        height=450
-    )
-    st.plotly_chart(fig_radar, use_container_width=True)
-
-    
+    st.table(comp_df.style.apply(highlight_stats, axis=1).format(precision=2))
 
     st.divider()
     st.markdown("### 📊 Porównanie Siły Zespołów")
