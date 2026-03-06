@@ -172,7 +172,7 @@ def render_league_ui(df, league_name):
         plt.ylabel(f"Gole {h_team} (Gospodarz)") 
         st.pyplot(fig)
 
-    # --- RESZTA ANALIZY ---
+    # --- 5. ANALIZA UNDER / OVER ---
     st.divider()
     st.subheader("📉 Analiza Under / Over")
     lines = [1.5, 2.5, 3.5, 4.5]
@@ -185,25 +185,20 @@ def render_league_ui(df, league_name):
             st.write(f"🟢 **OVER**: {prob_over:.1%} (k: {1/prob_over:.2f})")
             st.write(f"🔴 **UNDER**: {prob_under:.1%} (k: {1/prob_under:.2f})")
 
+    # --- 6. ANALIZA BTTS ---
     st.divider()
-    st.write("### 🏦 Kalkulator Value Bet")
-    v1, v2, v3 = st.columns(3)
-    with v1: bk1 = st.text_input(f"Kurs {h_team}", "2.00", key=f"bk1_{league_name}")
-    with v2: bkx = st.text_input("Kurs X", "3.40", key=f"bkx_{league_name}")
-    with v3: bk2 = st.text_input(f"Kurs {a_team}", "4.00", key=f"bk2_{league_name}")
-
-    def check_v(prob, bk):
-        try:
-            k = float(bk.replace(',', '.'))
-            return f"✅ TAK ({k:.2f})" if k > (1/prob) else f"❌ NIE ({k:.2f})"
-        except: return "-"
-
-    st.table({
-        "Typ": ["1", "X", "2"],
-        "Model (%)": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"],
-        "Kurs Fair": [f"{1/p1:.2f}", f"{1/px:.2f}", f"{1/p2:.2f}"],
-        "Value?": [check_v(p1, bk1), check_v(px, bkx), check_v(p2, bk2)]
-    })
+    st.subheader("🥅 Obie Drużyny Strzelą (BTTS)")
+    # BTTS TAK: suma prawdopodobieństw gdzie obie drużyny strzelają > 0 goli
+    prob_btts_yes = sum(matrix[x, y] for x in range(1, max_g) for y in range(1, max_g))
+    prob_btts_no = 1 - prob_btts_yes
+    
+    b1, b2 = st.columns(2)
+    with b1:
+        st.markdown("**BTTS: TAK**")
+        st.write(f"🟢 **Szanse**: {prob_btts_yes:.1%} (k: {1/prob_btts_yes:.2f})")
+    with b2:
+        st.markdown("**BTTS: NIE**")
+        st.write(f"🔴 **Szanse**: {prob_btts_no:.1%} (k: {1/prob_btts_no:.2f})")
 
 with tab_bl:
     render_league_ui(load_bundesliga(), "Bundesliga")
