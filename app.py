@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Bundesliga Predictor Pro", layout="wide")
 
-# --- DANE BAZOWE (Twoje statystyki) ---
+# --- DANE BAZOWE ---
 @st.cache_data
 def load_data():
     data = {
@@ -31,37 +31,33 @@ def load_data():
     return pd.DataFrame(data)
 
 df = load_data()
-AVG_H_GF = df['H_GF'].mean()
-AVG_A_GF = df['A_GF'].mean()
+avg_h_gf = df['H_GF'].mean()
+avg_a_gf = df['A_GF'].mean()
 
-# --- SIDEBAR: KONFIGURACJA WAG ---
-st.sidebar.header("⚖️ Konfiguracja Wag (Suma 100%)")
-DEFAULT_W = [0.40, 0.30, 0.20, 0.10]
+# --- SIDEBAR: NIEZALEŻNE WAGI ---
+st.sidebar.header("⚖️ Konfiguracja Wag")
 
-if st.sidebar.button("🔄 Resetuj tylko wagi"):
-    for key in ['w0', 'w1', 'w2', 'w3']:
-        if key in st.session_state: del st.session_state[key]
+# Domyślne wagi
+D_W0, D_W1, D_W2, D_W3 = 0.40, 0.30, 0.20, 0.10
+
+if st.sidebar.button("🔄 Resetuj wagi"):
+    for k in ['s0','s1','s2','s3']: 
+        if k in st.session_state: del st.session_state[k]
     st.rerun()
 
-if 'w0' not in st.session_state: st.session_state.w0 = DEFAULT_W[0]
-if 'w1' not in st.session_state: st.session_state.w1 = DEFAULT_W[1]
-if 'w2' not in st.session_state: st.session_state.w2 = DEFAULT_W[2]
-if 'w3' not in st.session_state: st.session_state.w3 = DEFAULT_W[3]
+w0 = st.sidebar.slider("🏠 Gole Dom/Wyjazd", 0.0, 1.0, D_W0, key='s0')
+w1 = st.sidebar.slider("🌍 Gole Cały Sezon", 0.0, 1.0, D_W1, key='s1')
+w2 = st.sidebar.slider("✈️ xG Dom/Wyjazd", 0.0, 1.0, D_W2, key='s2')
+w3 = st.sidebar.slider("📈 xG Cały Sezon", 0.0, 1.0, D_W3, key='s3')
 
-def sync_weights(changed_key):
-    keys = ['w0', 'w1', 'w2', 'w3']
-    rem = [k for k in keys if k != changed_key]
-    diff = 1.0 - st.session_state[changed_key]
-    old_sum = sum(st.session_state[k] for k in rem)
-    if old_sum > 0:
-        for k in rem: st.session_state[k] = (st.session_state[k] / old_sum) * diff
-    else:
-        for k in rem: st.session_state[k] = diff / 3
+total_w = round(w0 + w1 + w2 + w3, 2)
+color = "green" if total_w == 1.0 else "red"
+st.sidebar.markdown(f"### Suma wag: :{color}[{total_w:.0%}]")
 
-st.sidebar.slider("🏠 Gole Dom/Wyjazd", 0.0, 1.0, key='w0', on_change=sync_weights, args=('w0',))
-st.sidebar.slider("🌍 Gole Cały Sezon", 0.0, 1.0, key='w1', on_change=sync_weights, args=('w1',))
-st.sidebar.slider("✈️ xG Dom/Wyjazd", 0.0, 1.0, key='w2', on_change=sync_weights, args=('w2',))
-st.sidebar.slider("📈 xG Cały Sezon", 0.0, 1.0, key='w3', on_change=sync_weights, args=('w3',))
+if total_w != 1.0:
+    st.sidebar.error("Suma wag musi wynosić dokładnie 100%!")
+    st.warning("⚠️ Skoryguj suwaki w panelu bocznym, aby zobaczyć obliczenia (suma musi być 100%).")
+    st.stop()
 
 # --- WYBÓR MECZU ---
 st.title("⚽ Bundesliga Predictor Pro")
@@ -71,76 +67,17 @@ with c1:
     h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
     st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
 with c2:
-    a_team = st.selectbox("Gość", df['Team'], index=11) # Domyślnie Gladbach
+    a_team = st.selectbox("Gość", df['Team'], index=11)
     a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
     st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
 
 # --- OBLICZENIA (TWOJA LOGIKA) ---
 h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
-ws = [st.session_state.w0, st.session_state.w1, st.session_state.w2, st.session_state.w3]
 
-h_atk_r = (h['H_GF']*ws[0] + h['T_GF']*ws[1] + h['HxG_F']*ws[2] + h['TxG_F']*ws[3])
-h_def_r = (h['H_GA']*ws[0] + h['T_GA']*ws[1] + h['HxG_A']*ws[2] + h['TxG_A']*ws[3])
-a_atk_r = (a['A_GF']*ws[0] + a['T_GF']*ws[1] + a['AxG_F']*ws[2] + a['TxG_F']*ws[3])
-a_def_r = (a['A_GA']*ws[0] + a['T_GA']*ws[1] + a['AxG_A']*ws[2] + a['TxG_A']*ws[3])
+h_atk_r = (h['H_GF']*w0 + h['T_GF']*w1 + h['HxG_F']*w2 + h['TxG_F']*w3)
+h_def_r = (h['H_GA']*w0 + h['T_GA']*w1 + h['HxG_A']*w2 + h['TxG_A']*w3)
+a_atk_r = (a['A_GF']*w0 + a['T_GF']*w1 + a['AxG_F']*w2 + a['TxG_F']*w3)
+a_def_r = (a['A_GA']*w0 + a['T_GA']*w1 + a['AxG_A']*w2 + a['TxG_A']*w3)
 
-# Strength (Siła względem średniej)
-h_atk_s, h_def_s = (h_atk_r / AVG_H_GF), (h_def_r / AVG_A_GF)
-a_atk_s, a_def_s = (a_atk_r / AVG_A_GF), (a_def_r / AVG_H_GF)
-
-lambda_h = h_atk_s * a_def_s * AVG_H_GF
-mu_a = a_atk_s * h_def_s * AVG_A_GF
-
-# --- TABELA SIŁY ---
-st.divider()
-st.write("### 📊 Współczynniki Siły (vs Średnia Ligowa)")
-def fmt_s(val, is_def=False):
-    pct = (val - 1)
-    color = "green" if (pct < 0 if is_def else pct > 0) else "red"
-    return f":{color}[{val:.2f} ({pct:+.0%})]"
-
-st.markdown(f"""
-| Drużyna | Atak (Strength) | Obrona (Strength) | Prognozowane Gole |
-| :--- | :--- | :--- | :--- |
-| **{h_team}** | {fmt_s(h_atk_s)} | {fmt_s(h_def_s, True)} | **{lambda_h:.2f}** |
-| **{a_team}** | {fmt_s(a_atk_s)} | {fmt_s(a_def_s, True)} | **{mu_a:.2f}** |
-""")
-
-# --- MACIERZ I SZANSE ---
-matrix = np.outer(poisson.pmf(range(7), lambda_h), poisson.pmf(range(7), mu_a))
-matrix /= matrix.sum()
-p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
-my_k1, my_kx, my_k2 = 1/p1, 1/px, 1/p2
-
-# --- WPISYWANIE KURSÓW BUKMACHERSKICH ---
-st.divider()
-st.write("### 🏦 Porównaj z Kursami Bukmachera")
-st.caption("Wpisz aktualne kursy z oferty (np. STS, Fortuna), aby sprawdzić opłacalność.")
-
-col_in1, col_in2, col_in3 = st.columns(3)
-with col_in1: b_k1 = st.text_input(f"Kurs na {h_team} (1)", placeholder="np. 1.45")
-with col_in2: b_kx = st.text_input("Kurs na Remis (X)", placeholder="np. 4.20")
-with col_in3: b_k2 = st.text_input(f"Kurs na {a_team} (2)", placeholder="np. 6.50")
-
-# Przetwarzanie kursów
-def check_value(my_k, bookie_k):
-    try:
-        bk = float(bookie_k.replace(',', '.'))
-        if bk > my_k: return f"✅ TAK ({bk:.2f})"
-        return f"❌ NIE ({bk:.2f})"
-    except: return "-"
-
-data = {
-    "Typ": ["1 (Gospodarz)", "X (Remis)", "2 (Gość)"],
-    "Twoje Prawd. (%)": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"],
-    "Twój Kurs (Fair)": [f"{my_k1:.2f}", f"{my_kx:.2f}", f"{my_k2:.2f}"],
-    "Value Bet?": [check_value(my_k1, b_k1), check_value(my_kx, b_kx), check_value(my_k2, b_k2)]
-}
-st.table(pd.DataFrame(data))
-
-# Macierz graficzna
-with st.expander("Zobacz pełną macierz wyników"):
-    fig, ax = plt.subplots(figsize=(10, 4))
-    sns.heatmap(matrix, annot=True, fmt=".1%", cmap="YlGnBu", cbar=False)
-    plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
-    st.pyplot(fig)
+h_atk_s, h_def_s = (h_atk_r / avg_h_gf), (h_def_r / avg_a_gf)
+a_atk_s, a_def_s = (a_atk_r / avg_a_
