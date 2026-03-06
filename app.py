@@ -31,12 +31,11 @@ def load_bundesliga():
     }
     return pd.DataFrame(data)
 
-# --- DANE BAZOWE: PREMIER LEAGUE (z przesłanych screenów) ---
+# --- DANE BAZOWE: PREMIER LEAGUE ---
 @st.cache_data
 def load_premier_league():
     data = {
         'Team': ['Arsenal', 'Manchester City', 'Manchester United', 'Aston Villa', 'Chelsea', 'Liverpool', 'Brentford', 'Everton', 'Bournemouth', 'Fulham', 'Sunderland', 'Newcastle', 'Crystal Palace', 'Brighton', 'Leeds', 'Tottenham', 'Nottingham Forest', 'West Ham', 'Burnley', 'Wolves'],
-        # Wyliczone średnie na mecz z Twoich tabel:
         'H_GF': [2.35, 2.40, 1.92, 1.40, 1.64, 1.85, 1.71, 1.20, 1.40, 1.60, 1.57, 1.86, 1.00, 1.46, 1.46, 1.20, 0.92, 1.21, 1.07, 1.06],
         'H_GA': [0.64, 0.73, 1.14, 1.00, 1.14, 1.14, 1.07, 1.26, 1.00, 1.20, 0.92, 1.60, 1.28, 1.06, 1.33, 1.66, 1.35, 1.92, 1.64, 1.93],
         'T_GF': [1.96, 2.03, 1.75, 1.34, 1.82, 1.65, 1.51, 1.17, 1.51, 1.37, 1.03, 1.44, 1.13, 1.31, 1.27, 1.34, 0.96, 1.20, 1.10, 0.73],
@@ -53,7 +52,7 @@ def load_premier_league():
     }
     return pd.DataFrame(data)
 
-# --- FUNKCJA KOREKTY DIXON-COLES ---
+# --- FUNKCJA KOREKTY ---
 def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 0 and y == 0: return 1 - (l_h * m_a * rho)
     if x == 0 and y == 1: return 1 + (l_h * rho)
@@ -61,8 +60,8 @@ def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 1 and y == 1: return 1 - rho
     return 1
 
-# --- SIDEBAR: WSPÓLNE WAGI ---
-st.sidebar.header("⚙️ Konfiguracja Wag (Global)")
+# --- SIDEBAR ---
+st.sidebar.header("⚙️ Konfiguracja Wag")
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 def reset_weights(): st.session_state.reset_counter += 1
 st.sidebar.button("🔄 Resetuj wagi", on_click=reset_weights)
@@ -81,7 +80,7 @@ if total_pct != 100:
 w0, w1, w2, w3 = v0/100, v1/100, v2/100, v3/100
 fixed_rho = -0.15
 
-# --- GŁÓWNY INTERFEJS: ZAKŁADKI LIG ---
+# --- INTERFEJS ---
 tab_bl, tab_pl = st.tabs(["🇩🇪 Bundesliga", "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League"])
 
 def render_league_ui(df, league_name):
@@ -91,32 +90,53 @@ def render_league_ui(df, league_name):
     
     col_a, col_b = st.columns(2)
     with col_a:
-        h_team = st.selectbox(f"Gospodarz ({league_name})", df['Team'], index=0)
+        h_team = st.selectbox(f"Gospodarz", df['Team'], index=0, key=f"h_{league_name}")
         h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
     with col_b:
-        a_team = st.selectbox(f"Gość ({league_name})", df['Team'], index=1)
+        a_team = st.selectbox(f"Gość", df['Team'], index=1, key=f"a_{league_name}")
         a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
 
     h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
 
-    # Obliczenia
+    # Obliczenia surowych średnich ważonych
     l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3)
     m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3)
     l_a_r = (a['AxG_F']*w0 + a['A_GF']*w1 + a['TxG_F']*w2 + a['T_GF']*w3)
     m_a_r = (a['AxG_A']*w0 + a['A_GA']*w1 + a['TxG_A']*w2 + a['T_GA']*w3)
 
+    # Współczynniki siły (Strength)
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 
+    # Parametry Poisson (Lambda i Mu)
     lambda_f = h_atk_s * a_def_s * avg_h_gf
     mu_f = a_atk_s * h_def_s * avg_a_gf
 
-    # Expander: Ścieżka obliczeniowa
-    with st.expander(f"🧮 Ścieżka Obliczeniowa ({league_name})"):
-        st.latex(rf"\lambda_{{gosp}} = {lambda_f:.2f}, \quad \mu_{{gość}} = {mu_f:.2f}")
-        st.info(f"Korekta Dixon-Coles ρ = {fixed_rho}")
+    # --- ROZBUDOWANA ŚCIEŻKA OBLICZENIOWA ---
+    with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
+        st.subheader("1. Średnie ligowe (Benchmark)")
+        st.write(f"Średnia goli gospodarzy: `{avg_h_gf:.3f}` | Średnia goli gości: `{avg_a_gf:.3f}`")
+        
+        c1, c2 = st.columns(2)
+        with c1:
+            st.markdown(f"**{h_team} (Gospodarz)**")
+            st.write(f"Ważona śr. strzelonych: `{l_h_r:.3f}`")
+            st.write(f"Ważona śr. straconych: `{m_h_r:.3f}`")
+            st.write(f"🎯 **Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
+            st.write(f"🛡️ **Siła Obrony:** `{m_h_r:.3f} / {avg_a_gf:.3f} = {h_def_s:.3f}`")
+        with c2:
+            st.markdown(f"**{a_team} (Gość)**")
+            st.write(f"Ważona śr. strzelonych: `{l_a_r:.3f}`")
+            st.write(f"Ważona śr. straconych: `{m_a_r:.3f}`")
+            st.write(f"🎯 **Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
+            st.write(f"🛡️ **Siła Obrony:** `{m_a_r:.3f} / {avg_h_gf:.3f} = {a_def_s:.3f}`")
+            
+        st.subheader("2. Wyliczenie Parametrów Rozkładu")
+        st.latex(rf"\lambda (Gospodarz) = {h_atk_s:.3f} \times {a_def_s:.3f} \times {avg_h_gf:.3f} = {lambda_f:.3f}")
+        st.latex(rf"\mu (Gość) = {a_atk_s:.3f} \times {h_def_s:.3f} \times {avg_a_gf:.3f} = {mu_f:.3f}")
+        st.info(f"Parametry korygowane Dixon-Coles (ρ = {fixed_rho}) dla niskich wyników bramkowych.")
 
     # Macierz
     max_g = 12
@@ -158,9 +178,9 @@ def render_league_ui(df, league_name):
     st.divider()
     st.write("### 🏦 Kalkulator Value Bet")
     v1, v2, v3 = st.columns(3)
-    with v1: bk1 = st.text_input(f"Kurs {h_team} ({league_name})", "2.00")
-    with v2: bkx = st.text_input(f"Kurs X ({league_name})", "3.40")
-    with v3: bk2 = st.text_input(f"Kurs {a_team} ({league_name})", "4.00")
+    with v1: bk1 = st.text_input(f"Kurs {h_team}", "2.00", key=f"bk1_{league_name}")
+    with v2: bkx = st.text_input("Kurs X", "3.40", key=f"bkx_{league_name}")
+    with v3: bk2 = st.text_input(f"Kurs {a_team}", "4.00", key=f"bk2_{league_name}")
 
     def check_v(prob, bk):
         try:
