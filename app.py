@@ -8,21 +8,20 @@ import requests
 from bs4 import BeautifulSoup
 import json
 
-st.set_page_config(page_title="Bundesliga Live Predictor", layout="wide")
+st.set_page_config(page_title="Bundesliga Predictor LIVE", layout="wide")
 
-# --- MAPOWANIE LOGOTYPÓW ---
-# Nazwy na Understat różnią się od Transfermarkt, musimy je "pożenić"
+# --- MAPOWANIE LOGOTYPÓW (Understat Name -> Transfermarkt ID) ---
 logo_map = {
     'Bayern Munich': 27, 'Borussia Dortmund': 16, 'Bayer Leverkusen': 15,
     'RB Leipzig': 23826, 'Eintracht Frankfurt': 24, 'Stuttgart': 79,
     'Freiburg': 60, 'Wolfsburg': 82, 'Hoffenheim': 533, 'Mainz 05': 39,
     'Werder Bremen': 86, 'Union Berlin': 89, 'Augsburg': 167,
     'Borussia M.Gladbach': 18, 'Heidenheim': 2036, 'FC Cologne': 3,
-    'St. Pauli': 35, 'Hamburger SV': 41, 'Holstein Kiel': 1297
+    'St. Pauli': 35, 'Hamburger SV': 41, 'Holstein Kiel': 1297, 'Bochum': 80
 }
 
-# --- SCRAPER UNDERSTAT ---
-@st.cache_data(ttl=3600)  # Odświeżanie co godzinę
+# --- SCRAPER Z POPRAWKĄ TYPÓW DANYCH ---
+@st.cache_data(ttl=3600)
 def get_live_data():
     url = "https://understat.com/league/Bundesliga"
     res = requests.get(url)
@@ -46,19 +45,26 @@ def get_live_data():
         team_name = t_data['title']
         history = t_data['history']
         
+        # Konwersja danych na float (ważne!)
+        for m in history:
+            m['scored'] = float(m['scored'])
+            m['missed'] = float(m['missed'])
+            m['xG'] = float(m['xG'])
+            m['xGA'] = float(m['xGA'])
+        
         h_g = [m for m in history if m['h_a'] == 'h']
         a_g = [m for m in history if m['h_a'] == 'a']
         
         teams.append({
             'Team': team_name,
-            'H_GF': np.mean([m['scored'] for m in h_g]),
-            'H_GA': np.mean([m['missed'] for m in h_g]),
-            'HxG_F': np.mean([m['xG'] for m in h_g]),
-            'HxG_A': np.mean([m['xGA'] for m in h_g]),
-            'A_GF': np.mean([m['scored'] for m in a_g]),
-            'A_GA': np.mean([m['missed'] for m in a_g]),
-            'AxG_F': np.mean([m['xG'] for m in a_g]),
-            'AxG_A': np.mean([m['xGA'] for m in a_g]),
+            'H_GF': np.mean([m['scored'] for m in h_g]) if h_g else 0,
+            'H_GA': np.mean([m['missed'] for m in h_g]) if h_g else 0,
+            'HxG_F': np.mean([m['xG'] for m in h_g]) if h_g else 0,
+            'HxG_A': np.mean([m['xGA'] for m in h_g]) if h_g else 0,
+            'A_GF': np.mean([m['scored'] for m in a_g]) if a_g else 0,
+            'A_GA': np.mean([m['missed'] for m in a_g]) if a_g else 0,
+            'AxG_F': np.mean([m['xG'] for m in a_g]) if a_g else 0,
+            'AxG_A': np.mean([m['xGA'] for m in a_g]) if a_g else 0,
             'T_GF': np.mean([m['scored'] for m in history]),
             'T_GA': np.mean([m['missed'] for m in history]),
             'TxG_F': np.mean([m['xG'] for m in history]),
@@ -69,21 +75,24 @@ def get_live_data():
 # Pobieranie danych
 try:
     df = get_live_data()
-    st.sidebar.success("🟢 Dane LIVE: Połączono z Understat")
-except:
-    st.sidebar.error("🔴 Błąd połączenia. Sprawdź dostęp do internetu.")
+    st.sidebar.success("🟢 Dane LIVE: Understat")
+except Exception as e:
+    st.sidebar.error(f"🔴 Błąd danych: {e}")
     st.stop()
 
-# --- SIDEBAR: KONFIGURACJA WAG ---
+# --- SIDEBAR WAGI ---
 st.sidebar.header("⚖️ Konfiguracja Wag")
 D_W = [40, 25, 20, 15]
-options = [i for i in range(0, 105, 5)]
+options = list(range(0, 105, 5))
 
-if 'w_xg_dv' not in st.session_state:
-    st.session_state.w_xg_dv, st.session_state.w_g_dv, st.session_state.w_xg_all, st.session_state.w_g_all = D_W
+# Inicjalizacja session_state
+keys = ['w_xg_dv', 'w_g_dv', 'w_xg_all', 'w_g_all']
+for i, k in enumerate(keys):
+    if k not in st.session_state:
+        st.session_state[k] = D_W[i]
 
 if st.sidebar.button("🔄 Resetuj wagi (40/25/20/15)"):
-    st.session_state.w_xg_dv, st.session_state.w_g_dv, st.session_state.w_xg_all, st.session_state.w_g_all = D_W
+    for i, k in enumerate(keys): st.session_state[k] = D_W[i]
     st.rerun()
 
 v0 = st.sidebar.selectbox("🎯 xG Sezon (dom/wyjazd) %", options, index=options.index(st.session_state.w_xg_dv), key='w_xg_dv')
@@ -103,24 +112,18 @@ avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
 c1, c2 = st.columns(2)
 with c1:
     h_team = st.selectbox("Gospodarz", df['Team'], index=0)
-    logo_id = logo_map.get(h_team, 0)
-    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{logo_id}.png", width=120)
+    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{logo_map.get(h_team, 0)}.png", width=120)
 with c2:
-    a_team = st.selectbox("Gość", df['Team'], index=1)
-    logo_id = logo_map.get(a_team, 0)
-    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{logo_id}.png", width=120)
+    a_team = st.selectbox("Gość", df['Team'], index=min(1, len(df)-1))
+    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{logo_map.get(a_team, 0)}.png", width=120)
 
 # --- OBLICZENIA ---
 h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
 
-# Lambda Gospodarza (Atak H vs Obrona A)
+# Atak i Obrona
 l_h = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3) / avg_h_gf
-# Obrona Gospodarza (do obliczenia mu przeciwnika)
 d_h = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3) / avg_a_gf
-
-# Lambda Gościa (Atak A vs Obrona H)
 l_a = (a['AxG_F']*w0 + a['A_GF']*w1 + a['TxG_F']*w2 + a['T_GF']*w3) / avg_a_gf
-# Obrona Gościa (do obliczenia mu przeciwnika)
 d_a = (a['AxG_A']*w0 + a['A_GA']*w1 + a['TxG_A']*w2 + a['T_GA']*w3) / avg_h_gf
 
 lambda_final = l_h * d_a * avg_h_gf
@@ -129,7 +132,7 @@ mu_final = l_a * d_h * avg_a_gf
 matrix = np.outer(poisson.pmf(range(10), lambda_final), poisson.pmf(range(10), mu_final))
 p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
 
-# --- WIDOKI ---
+# --- WYNIKI ---
 st.divider()
 st.subheader("🎯 Prognoza Wyniku Końcowego")
 m1, mx, m2 = st.columns(3)
@@ -139,9 +142,9 @@ m2.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
 
 st.write("### 🏦 Kalkulator Value Bet")
 ci1, ci2, ci3 = st.columns(3)
-with ci1: bk1 = st.text_input(f"Kurs {h_team}", placeholder="1.85")
-with ci2: bkx = st.text_input("Kurs X", placeholder="3.40")
-with ci3: bk2 = st.text_input(f"Kurs {a_team}", placeholder="4.50")
+with ci1: bk1 = st.text_input(f"Kurs {h_team}", value="2.00")
+with ci2: bkx = st.text_input("Kurs X", value="3.50")
+with ci3: bk2 = st.text_input(f"Kurs {a_team}", value="4.00")
 
 def get_v(prob, bk):
     try:
