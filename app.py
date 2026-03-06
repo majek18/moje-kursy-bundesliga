@@ -1,102 +1,87 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from scipy.stats import poisson
 import google.generativeai as genai
 
-# --- KONFIGURACJA STRONY ---
-st.set_page_config(page_title="Football Predictor & Copilot", layout="wide")
+# --- 1. KONFIGURACJA ---
+st.set_page_config(page_title="Analiza AI - Football Predictor", layout="wide")
 
-# --- KONFIGURACJA AI (GEMINI 3 FLASH) ---
-# Pobieranie klucza z bezpiecznych ustawień Streamlit
+# Konfiguracja Gemini (Gemini 3 Flash w Free Tier)
 gemini_key = st.secrets.get("GEMINI_API_KEY")
 
 if gemini_key:
     try:
         genai.configure(api_key=gemini_key)
-        # Używamy najbardziej stabilnej nazwy modelu
-        model = genai.GenerativeModel('gemini-1.5-flash')
-        st.sidebar.success("✅ Copilot AI jest aktywny")
+        model = genai.GenerativeModel('gemini-1.5-flash') # Najbardziej stabilna nazwa
     except Exception as e:
-        st.sidebar.error(f"Błąd inicjalizacji AI: {e}")
+        st.error(f"Błąd konfiguracji AI: {e}")
         model = None
 else:
-    st.sidebar.warning("⚠️ Brak klucza API w Secrets (GEMINI_API_KEY)")
+    st.warning("⚠️ Brak klucza API w Secrets (GEMINI_API_KEY).")
     model = None
 
-# --- DANE BAZOWE ---
+# --- 2. DANE ---
 @st.cache_data
-def load_data():
-    data = {
-        'Team': ['Bayern Munich', 'Borussia Dortmund', 'Bayer Leverkusen', 'RB Leipzig', 'St. Pauli', 'Arsenal', 'Manchester City', 'Liverpool'],
-        'H_GF': [4.00, 2.33, 2.08, 2.25, 1.18, 2.35, 2.40, 1.85],
-        'H_GA': [1.00, 0.92, 0.92, 1.42, 1.64, 0.64, 0.73, 1.14],
-        'A_GF': [3.33, 1.92, 1.67, 1.58, 0.77, 1.62, 1.64, 1.46],
-        'A_GA': [0.92, 1.17, 1.50, 1.33, 1.69, 0.81, 1.14, 1.53]
-    }
-    return pd.DataFrame(data)
+def get_data():
+    return pd.DataFrame({
+        'Team': ['Bayern Munich', 'Borussia Dortmund', 'Bayer Leverkusen', 'RB Leipzig', 'Arsenal', 'Manchester City'],
+        'H_GF': [4.0, 2.3, 2.1, 2.2, 2.3, 2.4],
+        'H_GA': [1.0, 0.9, 0.9, 1.4, 0.6, 0.7],
+        'A_GF': [3.3, 1.9, 1.7, 1.6, 1.6, 1.6],
+        'A_GA': [0.9, 1.2, 1.5, 1.3, 0.8, 1.1]
+    })
 
-df = load_data()
+df = get_data()
 
-# --- INTERFEJS WYBORU MECZU ---
-st.title("⚽ Football Predictor Pro")
+# --- 3. INTERFEJS ---
+st.title("⚽ Inteligentna Analiza Meczu")
+
 col1, col2 = st.columns(2)
-
 with col1:
     h_team = st.selectbox("Gospodarz", df['Team'], index=0)
-    h_stat = df[df['Team'] == h_team].iloc[0]
-
 with col2:
     a_team = st.selectbox("Gość", df['Team'], index=1)
-    a_stat = df[df['Team'] == a_team].iloc[0]
 
-# --- PROSTA LOGIKA POISSONA ---
-avg_league_g = 1.5
-lambda_h = (h_stat['H_GF'] / avg_league_g) * (a_stat['A_GA'] / avg_league_g) * avg_league_g
-lambda_a = (a_stat['A_GF'] / avg_league_g) * (h_stat['H_GA'] / avg_league_g) * avg_league_g
+# Obliczenia Poisson (Statystyka)
+avg_g = 1.5
+h_stat = df[df['Team'] == h_team].iloc[0]
+a_stat = df[df['Team'] == a_team].iloc[0]
+
+l_h = (h_stat['H_GF'] / avg_g) * (a_stat['A_GA'] / avg_g) * avg_g
+l_a = (a_stat['A_GF'] / avg_g) * (h_stat['H_GA'] / avg_g) * avg_g
+
+# Wyświetlenie wyniku statystycznego
+st.subheader(f"📊 Wynik z modelu matematycznego: {l_h:.2f} - {l_a:.2f}")
 
 st.divider()
-c1, c2 = st.columns(2)
-c1.metric(f"Oczekiwane gole {h_team}", f"{lambda_h:.2f}")
-c2.metric(f"Oczekiwane gole {a_team}", f"{lambda_a:.2f}")
 
-# --- SEKCOJA CZATU: TWOJEGO COPILOTA ---
-st.divider()
-st.subheader("🤖 Twój Piłkarski Copilot (Gemini AI)")
+# --- 4. ANALIZA AI (PRZYCISK) ---
+st.subheader("🤖 Ekspercka Analiza AI")
+st.write("Kliknij poniżej, aby Gemini przeprowadziło głęboką analizę tego zestawienia.")
 
-# Inicjalizacja historii wiadomości
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# Wyświetlanie historii czatu
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
-# Obsługa wejścia użytkownika (Pasek na dole strony)
-if prompt := st.chat_input("Zapytaj Copilota o ten mecz..."):
-    # Dodanie wiadomości użytkownika
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    # Generowanie odpowiedzi AI
+if st.button("🚀 Generuj Analizę AI", type="primary"):
     if model:
-        with st.chat_message("assistant"):
+        with st.spinner("Sztuczna inteligencja analizuje dane..."):
             try:
-                # Tworzenie kontekstu dla Gemini
-                context = f"""
-                Jesteś profesjonalnym analitykiem sportowym (Copilot). 
-                Analizujesz mecz: {h_team} vs {a_team}.
-                Statystyki przewidywanych goli (Poisson): {h_team} ({lambda_h:.2f}), {a_team} ({lambda_a:.2f}).
-                Odpowiedz na pytanie użytkownika rzeczowo i ekspercko: {prompt}
+                # Przygotowanie promptu dla AI
+                prompt = f"""
+                Działaj jako profesjonalny analityk sportowy. 
+                Przeanalizuj mecz: {h_team} (Gospodarz) vs {a_team} (Gość).
+                Statystyczne przewidywanie goli to: {h_team} {l_h:.2f} gola, {a_team} {l_a:.2f} gola.
+                
+                Napisz krótką (max 200 słów) analizę zawierającą:
+                1. Kto ma przewagę taktyczną?
+                2. Na co zwrócić uwagę (np. obrona gospodarzy vs atak gości)?
+                3. Końcowy werdykt (kto wygra lub czy będzie remis).
                 """
-                response = model.generate_content(context)
-                answer = response.text
-                st.markdown(answer)
-                # Zapisanie odpowiedzi w historii sesji
-                st.session_state.messages.append({"role": "assistant", "content": answer})
+                
+                # Generowanie treści
+                response = model.generate_content(prompt)
+                
+                # Wyświetlenie wyniku w ładnej ramce
+                st.info(response.text)
+                
             except Exception as e:
-                st.error(f"Błąd Copilota: {e}")
+                st.error(f"Błąd podczas generowania analizy: {e}")
     else:
-        st.error("Copilot nie jest gotowy. Sprawdź klucz API.")
+        st.error("AI nie jest skonfigurowane. Sprawdź klucz API.")
