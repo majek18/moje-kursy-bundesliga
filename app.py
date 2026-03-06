@@ -1,75 +1,57 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from scipy.stats import poisson
-import seaborn as sns
-import matplotlib.pyplot as plt
 import google.generativeai as genai
 
 # Konfiguracja strony
 st.set_page_config(page_title="Football Predictor", layout="wide")
 
-# AI Setup - Naprawa błędu klucza i modelu 404
+# AI Setup - Naprawa błędu 404 i v1beta
 gemini_key = st.secrets.get("GEMINI_API_KEY")
 
 if gemini_key:
     try:
         genai.configure(api_key=gemini_key)
-        # Używamy stabilnej nazwy modelu
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        # Próbujemy najbardziej bezpośredniej nazwy modelu
+        model = genai.GenerativeModel(
+            model_name='gemini-1.5-flash',
+            generation_config={"status": "active"}
+        )
+        # Test połączenia (opcjonalny)
+        st.sidebar.success("✅ Gemini skonfigurowane")
     except Exception as e:
-        st.error(f"Problem z konfiguracją AI: {e}")
+        st.error(f"Błąd inicjalizacji: {e}")
         model = None
 else:
-    st.warning("⚠️ Brak klucza API w Secrets (GEMINI_API_KEY). Funkcje AI są wyłączone.")
+    st.error("❌ Brak GEMINI_API_KEY w Secrets!")
     model = None
 
-# Funkcja do danych
+# Dane
 @st.cache_data
 def get_data():
-    data = {
-        'Team': ['Bayern Munich', 'Borussia Dortmund', 'Bayer Leverkusen', 'RB Leipzig'],
-        'H_GF': [4.00, 2.33, 2.08, 2.25],
-        'H_GA': [1.00, 0.92, 0.92, 1.42],
-        'A_GF': [3.33, 1.92, 1.67, 1.58],
-        'A_GA': [0.92, 1.17, 1.50, 1.33],
-        'Logo_ID': [27, 16, 15, 23826]
-    }
-    return pd.DataFrame(data)
+    return pd.DataFrame({
+        'Team': ['Bayern Munich', 'Borussia Dortmund', 'Bayer Leverkusen'],
+        'H_GF': [4.0, 2.3, 2.1], 'H_GA': [1.0, 0.9, 0.9],
+        'A_GF': [3.3, 1.9, 1.7], 'A_GA': [0.9, 1.2, 1.5]
+    })
 
 df = get_data()
+h_team = st.selectbox("Gospodarz", df['Team'], index=0)
+a_team = st.selectbox("Gość", df['Team'], index=1)
 
-st.title("⚽ Football Predictor Pro")
-
-col1, col2 = st.columns(2)
-with col1:
-    h_team = st.selectbox("Gospodarz", df['Team'], index=0)
-with col2:
-    a_team = st.selectbox("Gość", df['Team'], index=1)
-
-# Prosta logika Poisson
-avg_g = 1.5
-h_stat = df[df['Team'] == h_team].iloc[0]
-a_stat = df[df['Team'] == a_team].iloc[0]
-
-l_h = (h_stat['H_GF'] / avg_g) * (a_stat['A_GA'] / avg_g) * avg_g
-l_a = (a_stat['A_GF'] / avg_g) * (h_stat['H_GA'] / avg_g) * avg_g
-
-st.metric("Przewidywane gole", f"{h_team} {l_h:.2f} - {l_a:.2f} {a_team}")
-
-# Sekcja AI Analyst
 st.divider()
 st.subheader("🤖 AI Analyst")
 
 if model:
-    user_query = st.text_input("Zadaj pytanie analitykowi AI:", placeholder="Kto ma większą szansę na wygraną?")
-    if user_query:
-        with st.spinner("AI analizuje dane..."):
-            prompt = f"Analizuj mecz: {h_team} vs {a_team}. Statystyki goli: {h_team}({l_h:.2f}), {a_team}({l_a:.2f}). Pytanie: {user_query}"
+    prompt = st.text_input("Zadaj pytanie:")
+    if prompt:
+        with st.spinner("Generowanie..."):
             try:
-                response = model.generate_content(prompt)
-                st.info(response.text)
+                # Wymuszamy najnowszą metodę generowania
+                response = model.generate_content(f"Mecz: {h_team} vs {a_team}. {prompt}")
+                st.write(response.text)
             except Exception as e:
-                st.error(f"Błąd generowania odpowiedzi: {e}")
-else:
-    st.info("Aby odblokować AI, dodaj GEMINI_API_KEY w ustawieniach Streamlit Cloud.")
+                # Jeśli nadal 404, spróbujmy wyświetlić co widzi biblioteka
+                st.error(f"Błąd modelu: {e}")
+                if "404" in str(e):
+                    st.info("Spróbuj zmienić nazwę modelu w kodzie na 'gemini-1.5-flash-latest'")
