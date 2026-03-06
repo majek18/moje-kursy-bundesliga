@@ -4,9 +4,18 @@ import numpy as np
 from scipy.stats import poisson
 import seaborn as sns
 import matplotlib.pyplot as plt
+import google.generativeai as genai  # Musisz dodać to do requirements.txt
 
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Football Predictor Pro", layout="wide")
+
+# --- KONFIGURACJA AI ---
+# Klucz API dodajesz w Streamlit Cloud -> Settings -> Secrets jako GEMINI_API_KEY
+if "GEMINI_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+    model = genai.GenerativeModel('gemini-1.5-flash')
+else:
+    model = None
 
 # --- DANE BAZOWE: BUNDESLIGA ---
 @st.cache_data
@@ -92,16 +101,13 @@ tab_bl, tab_pl = st.tabs(["🇩🇪 Bundesliga", "🏴󠁧󠁢󠁥󠁮󠁧󠁿 P
 
 def render_league_ui(df, league_name):
     avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
-    
     st.title(f"⚽ {league_name} Predictor")
     
     col_a, col_b = st.columns(2)
-    
     with col_a:
         h_team = st.selectbox(f"Gospodarz", df['Team'], index=0, key=f"h_{league_name}")
         h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
-        
         with st.expander("🛠️ Modyfikatory Gospodarza"):
             mod_range = list(range(-20, 21))
             m_key = st.session_state.mod_reset
@@ -116,7 +122,6 @@ def render_league_ui(df, league_name):
         a_team = st.selectbox(f"Gość", df['Team'], index=1, key=f"a_{league_name}")
         a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
-        
         with st.expander("🛠️ Modyfikatory Gościa"):
             mod_range = list(range(-20, 21))
             m_key = st.session_state.mod_reset
@@ -128,7 +133,6 @@ def render_league_ui(df, league_name):
             st.button("🧹 Resetuj", key=f"reset_a_{league_name}", on_click=reset_mods, use_container_width=True)
 
     h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
-
     l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3)
     m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3)
     l_a_r = (a['AxG_F']*w0 + a['A_GF']*w1 + a['TxG_F']*w2 + a['T_GF']*w3)
@@ -136,7 +140,6 @@ def render_league_ui(df, league_name):
 
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
-
     lambda_f = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod)
     mu_f = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod)
 
@@ -156,7 +159,6 @@ def render_league_ui(df, league_name):
     c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/max(px, 0.001):.2f}")
     c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/max(p2, 0.001):.2f}")
 
-    # --- OCZEKIWANE GOLE (LAMBDA / MU) ---
     st.markdown("#### ⚽ Przewidywana liczba goli (ExG)")
     ex_h, ex_a = st.columns(2)
     ex_h.metric(f"ExG {h_team}", f"{lambda_f:.2f}")
@@ -177,26 +179,58 @@ def render_league_ui(df, league_name):
     | **Łączny Modyfikator** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |
     """)
 
+    # --- CHAT AI (POD ANALIZĄ SIŁY) ---
+    st.divider()
+    st.subheader("🤖 AI Match Analyst")
+    if model:
+        if "messages" not in st.session_state:
+            st.session_state.messages = []
+
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        if user_input := st.chat_input("Zapytaj AI o ten mecz..."):
+            st.session_state.messages.append({"role": "user", "content": user_input})
+            with st.chat_message("user"):
+                st.markdown(user_input)
+
+            # Budowanie kontekstu dla AI
+            match_context = f"""
+            Jesteś ekspertem od zakładów bukmacherskich i analizy danych piłkarskich.
+            Analizujesz mecz: {h_team} vs {a_team}.
+            Obliczone parametry modelu Poisson:
+            - Przewidywane gole {h_team}: {lambda_f:.2f}
+            - Przewidywane gole {a_team}: {mu_f:.2f}
+            - Szanse: Wygrana gosp: {p1:.1%}, Remis: {px:.1%}, Wygrana gość: {p2:.1%}
+            - Modyfikatory: {h_team} ({h_total_mod:+.0%}), {a_team} ({a_total_mod:+.0%})
+            - Siła ataku/obrony: {h_team} (A:{h_atk_s:.2f}, D:{h_def_s:.2f}), {a_team} (A:{a_atk_s:.2f}, D:{a_def_s:.2f})
+            
+            Użytkownik pyta: {user_input}
+            Odpowiadaj konkretnie, krótko i bazuj na tych liczbach.
+            """
+            
+            try:
+                response = model.generate_content(match_context)
+                ai_text = response.text
+                with st.chat_message("assistant"):
+                    st.markdown(ai_text)
+                st.session_state.messages.append({"role": "assistant", "content": ai_text})
+            except Exception as e:
+                st.error("Błąd połączenia z AI. Sprawdź klucz API.")
+    else:
+        st.info("Podłącz GEMINI_API_KEY w Secrets, aby rozmawiać z AI Analitykiem.")
+
+    # --- DALSZA CZĘŚĆ (UKRYTA W EXPANDERACH) ---
     with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
-        st.subheader("1. Średnie ligowe")
         st.write(f"Średnia gospodarzy: `{avg_h_gf:.3f}` | Średnia gości: `{avg_a_gf:.3f}`")
-        sc1, sc2 = st.columns(2)
-        with sc1:
-            st.markdown(f"**{h_team}**")
-            st.write(f"🎯 **Bazowa Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
-        with sc2:
-            st.markdown(f"**{a_team}**")
-            st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
-        st.subheader("2. Parametry Poisson (Skorygowane)")
-        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}")
-        st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
+        st.latex(rf"\lambda_{{final}} = {lambda_f:.3f}")
+        st.latex(rf"\mu_{{final}} = {mu_f:.3f}")
 
     with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
         limit = 8
         fig, ax = plt.subplots(figsize=(10, 5))
         sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
-        plt.xlabel(f"Gole {a_team}") 
-        plt.ylabel(f"Gole {h_team}") 
         st.pyplot(fig)
 
     st.divider()
@@ -207,46 +241,16 @@ def render_league_ui(df, league_name):
         prob_under = sum(matrix[x, y] for x in range(max_g) for y in range(max_g) if x + y < line)
         prob_over = 1 - prob_under
         with ou_cols[i]:
-            st.markdown(f"**Linia {line}**")
-            st.write(f"🟢 **OVER**: {prob_over:.1%} (Kurs: {1/max(prob_over, 0.001):.2f})")
-            st.write(f"🔴 **UNDER**: {prob_under:.1%} (Kurs: {1/max(prob_under, 0.001):.2f})")
+            st.write(f"🟢 **OVER {line}**: {prob_over:.1%} ({1/max(prob_over, 0.001):.2f})")
+            st.write(f"🔴 **UNDER {line}**: {prob_under:.1%} ({1/max(prob_under, 0.001):.2f})")
 
     st.divider()
     st.subheader("🥅 Obie Drużyny Strzelą (BTTS)")
     prob_btts_yes = sum(matrix[x, y] for x in range(1, max_g) for y in range(1, max_g))
     prob_btts_no = 1 - prob_btts_yes
     b1, b2 = st.columns(2)
-    with b1:
-        st.write(f"🟢 **TAK**: {prob_btts_yes:.1%} (Kurs: {1/max(prob_btts_yes, 0.001):.2f})")
-    with b2:
-        st.write(f"🔴 **NIE**: {prob_btts_no:.1%} (Kurs: {1/max(prob_btts_no, 0.001):.2f})")
-
-    st.divider()
-    if st.button(f"🎲 URUCHOM ANALIZĘ 1 000 000 SCENARIUSZY", use_container_width=True, key=f"sim_{league_name}"):
-        with st.status("Trwa symulowanie (1 mln prób)...", expanded=True) as status:
-            n_sim = 1000000
-            sim_h = np.random.poisson(lambda_f, n_sim)
-            sim_a = np.random.poisson(mu_f, n_sim)
-            res_df = pd.DataFrame({'H': sim_h, 'A': sim_a, 'Total': sim_h + sim_a})
-            most_common_row = res_df.groupby(['H', 'A']).size().idxmax()
-            st.success(f"🏆 Najczęstszy wynik: **{most_common_row[0]}:{most_common_row[1]}**")
-            fig2, ax2 = plt.subplots(figsize=(10, 4))
-            sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=2)
-            sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=2)
-            plt.xlim(-0.5, 8.5) 
-            plt.legend()
-            st.pyplot(fig2)
-            st.markdown("### 🔍 Wnioski")
-            col_w1, col_w2 = st.columns(2)
-            with col_w1:
-                st.write(f"🏠 Wygrane {h_team}: **{(sim_h > sim_a).sum():,}**")
-                st.write(f"🤝 Remisy: **{(sim_h == sim_a).sum():,}**")
-                st.write(f"🚀 Wygrane {a_team}: **{(sim_a > sim_h).sum():,}**")
-            with col_w2:
-                st.write(f"🔥 Over 4.5: **{(res_df['Total'] >= 4.5).sum():,}**")
-                st.write(f"🧤 Czyste konto {h_team}: **{(sim_a == 0).sum():,}**")
-                st.write(f"🥅 BTTS: TAK: **{((sim_h > 0) & (sim_a > 0)).sum():,}**")
-            status.update(label="Analiza zakończona!", state="complete")
+    b1.write(f"🟢 **TAK**: {prob_btts_yes:.1%} ({1/max(prob_btts_yes, 0.001):.2f})")
+    b2.write(f"🔴 **NIE**: {prob_btts_no:.1%} ({1/max(prob_btts_no, 0.001):.2f})")
 
 with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
 with tab_pl: render_league_ui(load_premier_league(), "Premier League")
