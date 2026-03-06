@@ -201,22 +201,18 @@ def render_league_ui(df, league_name):
 
     # --- 7. ZAAWANSOWANA SYMULACJA MONTE CARLO ---
     st.divider()
-    if st.button(f"🎲 URUCHOM ANALIZĘ 1 000 000 SCENARIUSZY", use_container_width=True, key=f"sim_{league_name}"):
-        with st.status("Trwa symulowanie spotkania (1 mln prób)...", expanded=True) as status:
-            # ZMIENIONO: Liczba symulacji na 1 000 000
-            n_sim = 1000000
+    if st.button(f"🎲 URUCHOM ANALIZĘ 10 000 SCENARIUSZY", use_container_width=True, key=f"sim_{league_name}"):
+        with st.status("Trwa symulowanie spotkania...", expanded=True) as status:
+            n_sim = 10000
             sim_h = np.random.poisson(lambda_f, n_sim)
             sim_a = np.random.poisson(mu_f, n_sim)
             
-            # Operacje na dużym zbiorze danych
             res_df = pd.DataFrame({'H': sim_h, 'A': sim_a})
             res_df['Total'] = res_df['H'] + res_df['A']
+            res_df['Score'] = res_df['H'].astype(str) + ":" + res_df['A'].astype(str)
             
-            # Wyznaczanie dominanty (najczęstszy wynik)
-            most_common_row = res_df.groupby(['H', 'A']).size().idxmax()
-            most_common = f"{most_common_row[0]}:{most_common_row[1]}"
-            
-            # Obliczenia statystyk
+            # Obliczenia statystyk z symulacji
+            most_common = res_df['Score'].value_counts().idxmax()
             h_wins = (res_df['H'] > res_df['A']).sum()
             draws = (res_df['H'] == res_df['A']).sum()
             a_wins = (res_df['A'] > res_df['H']).sum()
@@ -224,35 +220,36 @@ def render_league_ui(df, league_name):
             clean_sheet_h = (res_df['A'] == 0).sum()
             btts_count = ((res_df['H'] > 0) & (res_df['A'] > 0)).sum()
 
-            st.success(f"🏆 Najczęstszy wynik w symulacji miliona prób: **{most_common}**")
+            st.success(f"🏆 Najczęstszy wynik w symulacji: **{most_common}**")
 
-            # Wykres gęstości goli (KDE) - przy 1 mln próbach jest idealnie gładki
+            # Wykres gęstości goli (KDE)
             fig2, ax2 = plt.subplots(figsize=(10, 4))
             sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=2)
             sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=2)
-            plt.title("Gęstość prawdopodobieństwa goli (1 000 000 prób)")
+            plt.title("Gęstość prawdopodobieństwa goli (10 000 prób)")
             plt.xlabel("Liczba goli")
             plt.ylabel("Gęstość")
             plt.legend()
             st.pyplot(fig2)
 
             # --- KLUCZOWE WNIOSKI (Bullety) ---
-            st.markdown("### 🔍 Wnioski z 1 000 000 symulowanych meczów")
+            st.markdown("### 🔍 Wnioski z 10 000 symulowanych meczów")
             
             col_w1, col_w2 = st.columns(2)
             with col_w1:
-                st.write(f"🏠 **{h_team}** wygrał w **{h_wins:,}** przypadkach.")
-                st.write(f"🤝 Remis padł w **{draws:,}** symulacjach.")
-                st.write(f"🚀 **{a_team}** wygrał w **{a_wins:,}** przypadkach.")
+                st.write(f"🏠 **{h_team}** wygrał w **{h_wins}** przypadkach.")
+                st.write(f"🤝 Remis padł w **{draws}** symulacjach.")
+                st.write(f"🚀 **{a_team}** wygrał w **{a_wins}** przypadkach.")
             
             with col_w2:
-                st.write(f"🔥 W **{over_45:,}** meczach padło 5 bramek lub więcej (Scenariusz hokejowy).")
-                st.write(f"🧤 **{h_team}** zachował czyste konto w **{clean_sheet_h:,}** próbach.")
-                st.write(f"🥅 Obie drużyny strzeliły gola (BTTS) w **{btts_count:,}** przypadkach.")
+                st.write(f"🔥 W **{over_45}** meczach padło 5 bramek lub więcej (Scenariusz hokejowy).")
+                st.write(f"🧤 **{h_team}** zachował czyste konto w **{clean_sheet_h}** próbach.")
+                st.write(f"🥅 Obie drużyny strzeliły gola (BTTS) w **{btts_count}** przypadkach.")
 
-            st.info(f"**Sygnał modelu (Stabilny):** Przy milionie prób, margines błędu statystycznego jest bliski zeru. Szansa na brak wygranej gospodarza (X2) to dokładnie **{(draws+a_wins)/n_sim:.2%}**.")
+            # Logika "Value/Safety"
+            st.info(f"**Sygnał modelu:** Pomimo faworyta, aż **{(draws+a_wins)/100:.1f}%** scenariuszy kończy się brakiem wygranej gospodarza (X2).")
             
-            status.update(label="Analiza miliona scenariuszy zakończona!", state="complete", expanded=True)
+            status.update(label="Analiza Monte Carlo zakończona!", state="complete", expanded=True)
 
 with tab_bl:
     render_league_ui(load_bundesliga(), "Bundesliga")
