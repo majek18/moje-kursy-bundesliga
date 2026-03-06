@@ -300,4 +300,9 @@ def render_league_ui(df, league_name):
                 st.write(f"🚀 Wygrane {a_team}: **{(sim_a > sim_h).sum():,}**")
             with col_w2:
                 st.write(f"🔥 Over 4.5: **{(res_df['Total'] >= 4.5).sum():,}**")
-                st.write(f"🧤 Czyste konto
+                st.write(f"🧤 Czyste konto {h_team}: **{(sim_a == 0).sum():,}**")
+                st.write(f"🥅 BTTS: TAK: **{((sim_h > 0) & (sim_a > 0)).sum():,}**")
+            status.update(label="Analiza zakończona!", state="complete")
+
+with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
+with tab_pl: render_league_ui(load_premier_league(), "Premier League")
