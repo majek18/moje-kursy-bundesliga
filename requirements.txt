@@ -2,4 +2,6 @@ streamlit
 pandas
 numpy
 scipy
-google-genai
+seaborn
+matplotlib
+google-generativeai
