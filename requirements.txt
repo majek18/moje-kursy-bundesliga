@@ -3,4 +3,4 @@ numpy
 scipy
 seaborn
 matplotlib
-plotly
+google-generativeai
