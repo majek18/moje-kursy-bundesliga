@@ -20,7 +20,7 @@ def load_bundesliga():
         'T_GF': [3.67, 2.13, 2.04, 2.00, 1.92, 1.88, 2.00, 1.42, 1.25, 1.21, 1.08, 1.13, 1.38, 1.13, 0.96, 1.04, 1.38, 0.92],
         'T_GA': [0.96, 1.04, 1.29, 1.33, 1.38, 1.21, 2.04, 1.63, 1.71, 1.58, 1.46, 1.63, 1.71, 1.63, 1.67, 1.83, 2.21, 2.21],
         'HxG_F': [3.43, 2.00, 2.07, 2.11, 2.65, 2.26, 1.69, 1.86, 1.31, 1.51, 1.59, 1.46, 1.51, 1.92, 1.00, 1.60, 1.52, 1.47],
-        'HxG_A': [1.04, 1.23, 1.28, 1.35, 1.51, 0.92, 1.26, 1.07, 1.67, 1.31, 1.58, 1.73, 1.65, 1.53, 1.53, 1.36, 1.84, 2.06],
+        'HxG_A': [1.04, 1.23, 1.28, 1.35, 1.51, 0.92, 1.26, 1.07, 1.67, 1.31, 1.58, 1.73, 1.65, 1.53, 1.54, 1.36, 1.84, 2.06],
         'TxG_F': [3.07, 1.85, 1.85, 1.96, 2.20, 2.02, 1.56, 1.42, 1.25, 1.42, 1.32, 1.43, 1.45, 1.63, 0.97, 1.32, 1.41, 1.36],
         'TxG_A': [1.13, 1.32, 1.59, 1.40, 1.42, 1.27, 1.61, 1.52, 1.88, 1.46, 1.72, 1.63, 1.89, 1.90, 1.83, 1.72, 1.96, 2.22],
         'A_GF': [3.33, 1.92, 1.83, 2.25, 1.58, 1.67, 2.17, 1.00, 1.18, 1.00, 0.64, 1.08, 1.00, 1.17, 0.77, 0.92, 1.17, 0.75],
@@ -111,25 +111,26 @@ def render_league_ui(df, league_name):
     lambda_f = h_atk_s * a_def_s * avg_h_gf
     mu_f = a_atk_s * h_def_s * avg_a_gf
 
-    # --- SEKCA OBLICZENIOWA (PRZENIESIONA) ---
-    with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
-        st.subheader("1. Średnie ligowe (Benchmark)")
-        st.write(f"Średnia goli gospodarzy: `{avg_h_gf:.3f}` | Średnia goli gości: `{avg_a_gf:.3f}`")
-        
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown(f"**{h_team}**")
-            st.write(f"🎯 **Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
-            st.write(f"🛡️ **Siła Obrony:** `{m_h_r:.3f} / {avg_a_gf:.3f} = {h_def_s:.3f}`")
-        with c2:
-            st.markdown(f"**{a_team}**")
-            st.write(f"🎯 **Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
-            st.write(f"🛡️ **Siła Obrony:** `{m_a_r:.3f} / {avg_h_gf:.3f} = {a_def_s:.3f}`")
-            
-        st.subheader("2. Parametry Poisson")
-        st.latex(rf"\lambda = {lambda_f:.3f}, \quad \mu = {mu_f:.3f}")
+    # Obliczenia macierzy
+    max_g = 12
+    matrix = np.zeros((max_g, max_g))
+    for x in range(max_g):
+        for y in range(max_g):
+            p = poisson.pmf(x, lambda_f) * poisson.pmf(y, mu_f)
+            matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_f, mu_f, fixed_rho)
+    matrix /= matrix.sum()
 
-    # --- TABELA PORÓWNANIA SIŁY ---
+    p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
+
+    # --- 1. SZANSE I KURSY ---
+    st.divider()
+    c1, c2, c3 = st.columns(3)
+    c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
+    c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
+    c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
+
+    # --- 2. TABELA SIŁY ---
+    st.divider()
     st.markdown("### 📊 Porównanie Siły Zespołów")
     
     def format_strength(val, is_attack=True):
@@ -144,15 +145,25 @@ def render_league_ui(df, league_name):
     | **Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |
     """)
 
-    # Macierz z podpisanymi osiami
-    max_g = 12
-    matrix = np.zeros((max_g, max_g))
-    for x in range(max_g):
-        for y in range(max_g):
-            p = poisson.pmf(x, lambda_f) * poisson.pmf(y, mu_f)
-            matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_f, mu_f, fixed_rho)
-    matrix /= matrix.sum()
+    # --- 3. ŚCIEŻKA OBLICZENIOWA ---
+    with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
+        st.subheader("1. Średnie ligowe (Benchmark)")
+        st.write(f"Średnia goli gospodarzy: `{avg_h_gf:.3f}` | Średnia goli gości: `{avg_a_gf:.3f}`")
+        
+        sc1, sc2 = st.columns(2)
+        with sc1:
+            st.markdown(f"**{h_team}**")
+            st.write(f"🎯 **Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
+            st.write(f"🛡️ **Siła Obrony:** `{m_h_r:.3f} / {avg_a_gf:.3f} = {h_def_s:.3f}`")
+        with sc2:
+            st.markdown(f"**{a_team}**")
+            st.write(f"🎯 **Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
+            st.write(f"🛡️ **Siła Obrony:** `{m_a_r:.3f} / {avg_h_gf:.3f} = {a_def_s:.3f}`")
+            
+        st.subheader("2. Parametry Poisson")
+        st.latex(rf"\lambda = {lambda_f:.3f}, \quad \mu = {mu_f:.3f}")
 
+    # --- 4. MACIERZ ---
     with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
         limit = 8
         fig, ax = plt.subplots(figsize=(10, 5))
@@ -161,13 +172,7 @@ def render_league_ui(df, league_name):
         plt.ylabel(f"Gole {h_team} (Gospodarz)") 
         st.pyplot(fig)
 
-    p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
-    st.divider()
-    c1, c2, c3 = st.columns(3)
-    c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
-    c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
-    c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
-
+    # --- RESZTA ANALIZY ---
     st.divider()
     st.subheader("📉 Analiza Under / Over")
     lines = [1.5, 2.5, 3.5, 4.5]
