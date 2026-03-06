@@ -34,37 +34,39 @@ df = load_data()
 avg_h_gf = df['H_GF'].mean()
 avg_a_gf = df['A_GF'].mean()
 
-# --- SIDEBAR: KONFIGURACJA WAG ---
+# --- SIDEBAR: KONFIGURACJA WAG (SELECTBOXY) ---
 st.sidebar.header("⚖️ Konfiguracja Wag")
 
-# Definicja domyślnych wartości
-D_W = [0.40, 0.30, 0.20, 0.10]
+# Opcje co 10 punktów procentowych
+options = [i for i in range(0, 110, 10)]
+# Mapowanie: 40 -> index 4, 30 -> index 3 itd.
 
-# Inicjalizacja stanu sesji, jeśli nie istnieje
-if 's0' not in st.session_state: st.session_state.s0 = D_W[0]
-if 's1' not in st.session_state: st.session_state.s1 = D_W[1]
-if 's2' not in st.session_state: st.session_state.s2 = D_W[2]
-if 's3' not in st.session_state: st.session_state.s3 = D_W[3]
+if 'sel0' not in st.session_state: st.session_state.sel0 = 40
+if 'sel1' not in st.session_state: st.session_state.sel1 = 30
+if 'sel2' not in st.session_state: st.session_state.sel2 = 20
+if 'sel3' not in st.session_state: st.session_state.sel3 = 10
 
-# NAPRAWIONY PRZYCISK RESETU
-if st.sidebar.button("🔄 Resetuj wagi do domyślnych"):
-    st.session_state.s0 = D_W[0]
-    st.session_state.s1 = D_W[1]
-    st.session_state.s2 = D_W[2]
-    st.session_state.s3 = D_W[3]
+if st.sidebar.button("🔄 Resetuj wagi (40/30/20/10)"):
+    st.session_state.sel0 = 40
+    st.session_state.sel1 = 30
+    st.session_state.sel2 = 20
+    st.session_state.sel3 = 10
     st.rerun()
 
-w0 = st.sidebar.slider("🏠 Gole Dom/Wyjazd", 0.0, 1.0, key='s0')
-w1 = st.sidebar.slider("🌍 Gole Cały Sezon", 0.0, 1.0, key='s1')
-w2 = st.sidebar.slider("✈️ xG Dom/Wyjazd", 0.0, 1.0, key='s2')
-w3 = st.sidebar.slider("📈 xG Cały Sezon", 0.0, 1.0, key='s3')
+v0 = st.sidebar.selectbox("🏠 Gole Dom/Wyjazd (%)", options, index=options.index(st.session_state.sel0), key='sel0')
+v1 = st.sidebar.selectbox("🌍 Gole Cały Sezon (%)", options, index=options.index(st.session_state.sel1), key='sel1')
+v2 = st.sidebar.selectbox("✈️ xG Dom/Wyjazd (%)", options, index=options.index(st.session_state.sel2), key='sel2')
+v3 = st.sidebar.selectbox("📈 xG Cały Sezon (%)", options, index=options.index(st.session_state.sel3), key='sel3')
 
-total_w = round(w0 + w1 + w2 + w3, 2)
-color = "green" if total_w == 1.0 else "red"
-st.sidebar.markdown(f"### Suma wag: :{color}[{total_w:.0%}]")
+# Konwersja na ułamki do obliczeń
+w0, w1, w2, w3 = v0/100, v1/100, v2/100, v3/100
 
-if total_w != 1.0:
-    st.sidebar.error(f"Suma wynosi {total_w:.0%}. Skoryguj do 100%!")
+total_pct = v0 + v1 + v2 + v3
+color = "green" if total_pct == 100 else "red"
+st.sidebar.markdown(f"### Suma: :{color}[{total_pct}%]")
+
+if total_pct != 100:
+    st.sidebar.error("Suma wag musi wynosić dokładnie 100%!")
     st.stop()
 
 # --- WYBÓR MECZU ---
@@ -136,7 +138,6 @@ res_df = pd.DataFrame({
 st.table(res_df)
 
 with st.expander("Zobacz macierz prawdopodobieństwa"):
-    
     fig, ax = plt.subplots(figsize=(10, 4))
     sns.heatmap(matrix, annot=True, fmt=".1%", cmap="YlGnBu", cbar=False)
     plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
