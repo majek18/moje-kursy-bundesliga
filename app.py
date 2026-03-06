@@ -89,14 +89,34 @@ def render_league_ui(df, league_name):
     st.title(f"⚽ {league_name} Predictor")
     
     col_a, col_b = st.columns(2)
+    
     with col_a:
         h_team = st.selectbox(f"Gospodarz", df['Team'], index=0, key=f"h_{league_name}")
         h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
+        
+        # --- MODYFIKATORY GOSPODARZA ---
+        with st.expander("🛠️ Modyfikatory Gospodarza"):
+            mod_range = list(range(-20, 21))
+            h_kontuzje = st.select_slider("KONTUZJE", options=mod_range, value=0, key=f"h_k_{league_name}")
+            h_forma = st.select_slider("FORMA", options=mod_range, value=0, key=f"h_f_{league_name}")
+            h_styl = st.select_slider("STYL GRY", options=mod_range, value=0, key=f"h_s_{league_name}")
+            h_pogoda = st.select_slider("POGODA", options=mod_range, value=0, key=f"h_p_{league_name}")
+            h_total_mod = (h_kontuzje + h_forma + h_styl + h_pogoda) / 100
+
     with col_b:
         a_team = st.selectbox(f"Gość", df['Team'], index=1, key=f"a_{league_name}")
         a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
+        
+        # --- MODYFIKATORY GOŚCIA ---
+        with st.expander("🛠️ Modyfikatory Gościa"):
+            mod_range = list(range(-20, 21))
+            a_kontuzje = st.select_slider("KONTUZJE", options=mod_range, value=0, key=f"a_k_{league_name}")
+            a_forma = st.select_slider("FORMA", options=mod_range, value=0, key=f"a_f_{league_name}")
+            a_styl = st.select_slider("STYL GRY", options=mod_range, value=0, key=f"a_s_{league_name}")
+            a_pogoda = st.select_slider("POGODA", options=mod_range, value=0, key=f"a_p_{league_name}")
+            a_total_mod = (a_kontuzje + a_forma + a_styl + a_pogoda) / 100
 
     h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
 
@@ -108,8 +128,9 @@ def render_league_ui(df, league_name):
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 
-    lambda_f = h_atk_s * a_def_s * avg_h_gf
-    mu_f = a_atk_s * h_def_s * avg_a_gf
+    # ZASTOSOWANIE MODYFIKATORÓW DO LAMBDY
+    lambda_f = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod)
+    mu_f = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod)
 
     # Obliczenia macierzy
     max_g = 12
@@ -125,13 +146,13 @@ def render_league_ui(df, league_name):
     # --- 1. SZANSE I KURSY ---
     st.divider()
     c1, c2, c3 = st.columns(3)
-    c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
-    c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
-    c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
+    c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/max(p1, 0.001):.2f}")
+    c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/max(px, 0.001):.2f}")
+    c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/max(p2, 0.001):.2f}")
 
     # --- 2. TABELA SIŁY ---
     st.divider()
-    st.markdown("### 📊 Porównanie Siły Zespołów")
+    st.markdown("### 📊 Porównanie Siły Zespołów (z uwzględnieniem modyfikatorów)")
     
     def format_strength(val, is_attack=True):
         pct = (val - 1.0) * 100
@@ -143,6 +164,7 @@ def render_league_ui(df, league_name):
     | :--- | :--- | :--- |
     | **Siła Ataku** | {format_strength(h_atk_s, True)} | {format_strength(a_atk_s, True)} |
     | **Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |
+    | **Łączny Modyfikator** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |
     """)
 
     # --- 3. ŚCIEŻKA OBLICZENIOWA ---
@@ -153,15 +175,14 @@ def render_league_ui(df, league_name):
         sc1, sc2 = st.columns(2)
         with sc1:
             st.markdown(f"**{h_team}**")
-            st.write(f"🎯 **Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
-            st.write(f"🛡️ **Siła Obrony:** `{m_h_r:.3f} / {avg_a_gf:.3f} = {h_def_s:.3f}`")
+            st.write(f"🎯 **Bazowa Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
         with sc2:
             st.markdown(f"**{a_team}**")
-            st.write(f"🎯 **Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
-            st.write(f"🛡️ **Siła Obrony:** `{m_a_r:.3f} / {avg_h_gf:.3f} = {a_def_s:.3f}`")
+            st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
             
-        st.subheader("2. Parametry Poisson")
-        st.latex(rf"\lambda = {lambda_f:.3f}, \quad \mu = {mu_f:.3f}")
+        st.subheader("2. Parametry Poisson (Skorygowane)")
+        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}")
+        st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
 
     # --- 4. MACIERZ ---
     with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
@@ -182,8 +203,8 @@ def render_league_ui(df, league_name):
         prob_over = 1 - prob_under
         with ou_cols[i]:
             st.markdown(f"**Linia {line}**")
-            st.write(f"🟢 **OVER**: {prob_over:.1%} (k: {1/prob_over:.2f})")
-            st.write(f"🔴 **UNDER**: {prob_under:.1%} (k: {1/prob_under:.2f})")
+            st.write(f"🟢 **OVER**: {prob_over:.1%} (k: {1/max(prob_over, 0.001):.2f})")
+            st.write(f"🔴 **UNDER**: {prob_under:.1%} (k: {1/max(prob_under, 0.001):.2f})")
 
     # --- 6. ANALIZA BTTS ---
     st.divider()
@@ -194,10 +215,10 @@ def render_league_ui(df, league_name):
     b1, b2 = st.columns(2)
     with b1:
         st.markdown("**BTTS: TAK**")
-        st.write(f"🟢 **Szanse**: {prob_btts_yes:.1%} (k: {1/prob_btts_yes:.2f})")
+        st.write(f"🟢 **Szanse**: {prob_btts_yes:.1%} (k: {1/max(prob_btts_yes, 0.001):.2f})")
     with b2:
         st.markdown("**BTTS: NIE**")
-        st.write(f"🔴 **Szanse**: {prob_btts_no:.1%} (k: {1/prob_btts_no:.2f})")
+        st.write(f"🔴 **Szanse**: {prob_btts_no:.1%} (k: {1/max(prob_btts_no, 0.001):.2f})")
 
     # --- 7. ZAAWANSOWANA SYMULACJA MONTE CARLO ---
     st.divider()
@@ -222,21 +243,16 @@ def render_league_ui(df, league_name):
 
             st.success(f"🏆 Najczęstszy wynik w symulacji miliona prób: **{most_common}**")
 
-            # Wykres gęstości goli (KDE)
             fig2, ax2 = plt.subplots(figsize=(10, 4))
             sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=2)
             sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=2)
-            
-            # POPRAWKA OSI X: Ograniczenie do logicznego zakresu bramek
             plt.xlim(-0.5, 8.5) 
-            
             plt.title("Gęstość prawdopodobieństwa goli (1 000 000 prób)")
             plt.xlabel("Liczba goli")
             plt.ylabel("Gęstość")
             plt.legend()
             st.pyplot(fig2)
 
-            # --- KLUCZOWE WNIOSKI (Bullety) ---
             st.markdown("### 🔍 Wnioski z 1 000 000 symulowanych meczów")
             
             col_w1, col_w2 = st.columns(2)
@@ -246,11 +262,11 @@ def render_league_ui(df, league_name):
                 st.write(f"🚀 **{a_team}** wygrał w **{a_wins:,}** przypadkach.")
             
             with col_w2:
-                st.write(f"🔥 W **{over_45:,}** meczach padło 5 bramek lub więcej (Scenariusz hokejowy).")
+                st.write(f"🔥 W **{over_45:,}** meczach padło 5 bramek lub więcej.")
                 st.write(f"🧤 **{h_team}** zachował czyste konto w **{clean_sheet_h:,}** próbach.")
                 st.write(f"🥅 Obie drużyny strzeliły gola (BTTS) w **{btts_count:,}** przypadkach.")
 
-            st.info(f"**Sygnał modelu (Stabilny):** Przy milionie prób, margines błędu statystycznego jest bliski zeru. Szansa na brak wygranej gospodarza (X2) to dokładnie **{(draws+a_wins)/n_sim:.2%}**.")
+            st.info(f"**Sygnał modelu:** Skorygowana szansa na brak wygranej gospodarza (X2) to dokładnie **{(draws+a_wins)/n_sim:.2%}**.")
             
             status.update(label="Analiza miliona scenariuszy zakończona!", state="complete", expanded=True)
 
