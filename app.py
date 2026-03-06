@@ -100,7 +100,6 @@ def render_league_ui(df, league_name):
 
     h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
 
-    # Obliczenia bazowe
     l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3)
     m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3)
     l_a_r = (a['AxG_F']*w0 + a['A_GF']*w1 + a['TxG_F']*w2 + a['T_GF']*w3)
@@ -112,7 +111,6 @@ def render_league_ui(df, league_name):
     lambda_f = h_atk_s * a_def_s * avg_h_gf
     mu_f = a_atk_s * h_def_s * avg_a_gf
 
-    # --- NOWA SEKCJA: TABELA SIŁY (POD HERBAMI) ---
     st.markdown("### 📊 Porównanie Siły Zespołów")
     
     def format_strength(val, is_attack=True):
@@ -127,7 +125,6 @@ def render_league_ui(df, league_name):
     | **Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |
     """)
 
-    # --- ROZBUDOWANA ŚCIEŻKA OBLICZENIOWA ---
     with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
         st.subheader("1. Średnie ligowe (Benchmark)")
         st.write(f"Średnia goli gospodarzy: `{avg_h_gf:.3f}` | Średnia goli gości: `{avg_a_gf:.3f}`")
@@ -145,7 +142,7 @@ def render_league_ui(df, league_name):
         st.subheader("2. Parametry Poisson")
         st.latex(rf"\lambda = {lambda_f:.3f}, \quad \mu = {mu_f:.3f}")
 
-    # Macierz
+    # Macierz z podpisanymi osiami
     max_g = 12
     matrix = np.zeros((max_g, max_g))
     for x in range(max_g):
@@ -158,9 +155,10 @@ def render_league_ui(df, league_name):
         limit = 8
         fig, ax = plt.subplots(figsize=(10, 5))
         sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
+        plt.xlabel(f"Gole {a_team} (Gość)") # Podpisanie osi X
+        plt.ylabel(f"Gole {h_team} (Gospodarz)") # Podpisanie osi Y
         st.pyplot(fig)
 
-    # Wyniki 1X2
     p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
     st.divider()
     c1, c2, c3 = st.columns(3)
@@ -168,7 +166,6 @@ def render_league_ui(df, league_name):
     c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
     c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
 
-    # Under / Over
     st.divider()
     st.subheader("📉 Analiza Under / Over")
     lines = [1.5, 2.5, 3.5, 4.5]
@@ -181,7 +178,6 @@ def render_league_ui(df, league_name):
             st.write(f"🟢 **OVER**: {prob_over:.1%} (k: {1/prob_over:.2f})")
             st.write(f"🔴 **UNDER**: {prob_under:.1%} (k: {1/prob_under:.2f})")
 
-    # Kalkulator Value
     st.divider()
     st.write("### 🏦 Kalkulator Value Bet")
     v1, v2, v3 = st.columns(3)
