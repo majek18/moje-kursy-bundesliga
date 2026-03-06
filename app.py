@@ -33,93 +33,94 @@ df = load_data()
 avg_h_gf = df['H_GF'].mean()
 avg_a_gf = df['A_GF'].mean()
 
-# --- INTELIGENTNE SUWAKI (SIDEBAR) ---
-st.sidebar.header("⚖️ Balans Wag (Suma 100%)")
+# --- POPRAWIONE RESPONSYWNE SUWAKI ---
+st.sidebar.header("⚖️ Konfiguracja Wag")
 
-if 'weights' not in st.session_state:
-    st.session_state.weights = [0.40, 0.30, 0.20, 0.10]
+if 'w_dom' not in st.session_state: st.session_state['w_dom'] = 0.40
+if 'w_sezon' not in st.session_state: st.session_state['w_sezon'] = 0.30
+if 'w_xg_dom' not in st.session_state: st.session_state['w_xg_dom'] = 0.20
+if 'w_xg_sezon' not in st.session_state: st.session_state['w_xg_sezon'] = 0.10
 
-def update_weights(index):
-    new_val = st.session_state[f'w{index}']
-    old_val = st.session_state.weights[index]
-    diff = new_val - old_val
+def sync_weights(changed_key):
+    keys = ['w_dom', 'w_sezon', 'w_xg_dom', 'w_xg_sezon']
+    remaining_keys = [k for k in keys if k != changed_key]
     
-    other_indices = [i for i in range(4) if i != index]
-    other_sum = sum(st.session_state.weights[i] for i in other_indices)
+    new_val = st.session_state[changed_key]
+    old_total_others = sum(st.session_state[k] for k in remaining_keys)
+    target_others = 1.0 - new_val
     
-    if other_sum > 0:
-        for i in other_indices:
-            st.session_state.weights[i] -= diff * (st.session_state.weights[i] / other_sum)
+    if old_total_others > 0:
+        for k in remaining_keys:
+            st.session_state[k] = (st.session_state[k] / old_total_others) * target_others
     else:
-        for i in other_indices:
-            st.session_state.weights[i] -= diff / 3
-    
-    st.session_state.weights[index] = new_val
+        for k in remaining_keys:
+            st.session_state[k] = target_others / 3
 
-w_labels = [
-    "🏠 Gole Dom/Wyjazd", 
-    "🌍 Gole Cały Sezon", 
-    "✈️ xG Dom/Wyjazd", 
-    "📈 xG Cały Sezon"
-]
-
-for i in range(4):
-    st.sidebar.slider(w_labels[i], 0.0, 1.0, st.session_state.weights[i], 
-                      key=f'w{i}', on_change=update_weights, args=(i,))
-
-weights = st.session_state.weights
+st.sidebar.slider("🏠 Gole Dom/Wyjazd", 0.0, 1.0, key='w_dom', on_change=sync_weights, args=('w_dom',))
+st.sidebar.slider("🌍 Gole Cały Sezon", 0.0, 1.0, key='w_sezon', on_change=sync_weights, args=('w_sezon',))
+st.sidebar.slider("✈️ xG Dom/Wyjazd", 0.0, 1.0, key='w_xg_dom', on_change=sync_weights, args=('w_xg_dom',))
+st.sidebar.slider("📈 xG Cały Sezon", 0.0, 1.0, key='w_xg_sezon', on_change=sync_weights, args=('w_xg_sezon',))
 
 # --- WYBÓR MECZU ---
 st.title("🚀 Bundesliga Predictor Pro")
 c1, c2 = st.columns(2)
-with c1: h_team = st.selectbox("Gospodarz", df['Team'], index=0)
-with c2: a_team = st.selectbox("Gość", df['Team'], index=1)
+with c1: h_team = st.selectbox("Gospodarz (A)", df['Team'], index=0)
+with c2: a_team = st.selectbox("Gość (B)", df['Team'], index=1)
 
-# --- OBLICZENIA SIŁY ---
-h = df[df['Team'] == h_team].iloc[0]
-a = df[df['Team'] == a_team].iloc[0]
+# --- OBLICZENIA SIŁY I LAMBDA ---
+h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
+w = st.session_state
 
-h_atk_sum = (h['H_GF']*weights[0] + h['T_GF']*weights[1] + h['HxG_F']*weights[2] + h['TxG_F']*weights[3])
-h_def_sum = (h['H_GA']*weights[0] + h['T_GA']*weights[1] + h['HxG_A']*weights[2] + h['TxG_A']*weights[3])
-a_atk_sum = (a['A_GF']*weights[0] + a['T_GF']*weights[1] + a['AxG_F']*weights[2] + a['TxG_F']*weights[3])
-a_def_sum = (a['A_GA']*weights[0] + a['T_GA']*weights[1] + a['AxG_A']*weights[2] + a['TxG_A']*weights[3])
+# Sumy ważone
+h_atk_sum = (h['H_GF']*w.w_dom + h['T_GF']*w.w_sezon + h['HxG_F']*w.w_xg_dom + h['TxG_F']*w.w_xg_sezon)
+h_def_sum = (h['H_GA']*w.w_dom + h['T_GA']*w.w_sezon + h['HxG_A']*w.w_xg_dom + h['TxG_A']*w.w_xg_sezon)
+a_atk_sum = (a['A_GF']*w.w_dom + a['T_GF']*w.w_sezon + a['AxG_F']*w.w_xg_dom + a['TxG_F']*w.w_xg_sezon)
+a_def_sum = (a['A_GA']*w.w_dom + a['T_GA']*w.w_sezon + a['AxG_A']*w.w_xg_dom + a['TxG_A']*w.w_xg_sezon)
 
+# Współczynniki siły (przeliczone na % różnicy)
 h_atk_s = (h_atk_sum / avg_h_gf) - 1
 h_def_s = (h_def_sum / avg_a_gf) - 1
 a_atk_s = (a_atk_sum / avg_a_gf) - 1
 a_def_s = (a_def_sum / avg_h_gf) - 1
 
-# --- MINI-TABELA SIŁY ---
-st.write("### 📊 Siła zespołów względem średniej ligi")
+# PROGNOZOWANE GOLE (xG meczowe)
+lambda_h = (h_atk_s + 1) * (a_def_s + 1) * avg_h_gf
+mu_a = (a_atk_s + 1) * (h_def_s + 1) * avg_a_gf
 
-def color_value(val, type='atk'):
-    color = "green" if (val > 0 if type == 'atk' else val < 0) else "red"
-    return f":{color}[{val:+.0%}]"
+# --- WYŚWIETLANIE WYNIKÓW ---
+st.divider()
+col_res1, col_res2 = st.columns(2)
 
-st.markdown(f"""
-| Drużyna | Atak (Skuteczność) | Obrona (Szczelność) |
-| :--- | :--- | :--- |
-| **{h_team}** | {color_value(h_atk_s, 'atk')} | {color_value(h_def_s, 'def')} |
-| **{a_team}** | {color_value(a_atk_s, 'atk')} | {color_value(a_def_s, 'def')} |
-""")
+with col_res1:
+    st.write("### 📊 Siła względem średniej ligi")
+    def color_val(val, type='atk'):
+        color = "green" if (val > 0 if type == 'atk' else val < 0) else "red"
+        return f":{color}[{val:+.1%}]"
+    
+    st.markdown(f"""
+    | Drużyna | Atak | Obrona |
+    | :--- | :--- | :--- |
+    | **{h_team}** | {color_val(h_atk_s, 'atk')} | {color_val(h_def_s, 'def')} |
+    | **{a_team}** | {color_val(a_atk_s, 'atk')} | {color_val(a_def_s, 'def')} |
+    """)
 
-# --- MODEL POISSONA ---
-lamb = (h_atk_s + 1) * (a_def_s + 1) * avg_h_gf
-mu = (a_atk_s + 1) * (h_def_s + 1) * avg_a_gf
+with col_res2:
+    st.write("### 🎯 Prognozowane gole (xG meczowe)")
+    st.metric(f"Oczekiwane gole {h_team}", f"{lambda_h:.2f}")
+    st.metric(f"Oczekiwane gole {a_team}", f"{mu_a:.2f}")
 
-matrix = np.outer(poisson.pmf(range(6), lamb), poisson.pmf(range(6), mu))
+# --- MACIERZ I KURSY ---
+matrix = np.outer(poisson.pmf(range(7), lambda_h), poisson.pmf(range(7), mu_a))
 matrix /= matrix.sum()
 
-# --- MACIERZ ---
-st.write("### 🟦 Macierz Szans na Wynik")
-fig, ax = plt.subplots(figsize=(8, 4))
+st.write("### 🟦 Macierz szans na dokładny wynik")
+fig, ax = plt.subplots(figsize=(10, 4.5))
 sns.heatmap(matrix, annot=True, fmt=".1%", cmap="YlGnBu", cbar=False)
 plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
 st.pyplot(fig)
 
-# --- KURSY ---
 wh, dr, wa = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
-res1, resx, res2 = st.columns(3)
-res1.metric(f"Wygrana {h_team}", f"{wh:.1%}", f"Kurs: {1/wh:.2f}")
-resx.metric("Remis", f"{dr:.1%}", f"Kurs: {1/dr:.2f}")
-res2.metric(f"Wygrana {a_team}", f"{wa:.1%}", f"Kurs: {1/wa:.2f}")
+c_h, c_x, c_a = st.columns(3)
+c_h.metric(f"Wygrana {h_team}", f"{wh:.1%}", f"Kurs: {1/wh:.2f}")
+c_x.metric("Remis", f"{dr:.1%}", f"Kurs: {1/dr:.2f}")
+c_a.metric(f"Wygrana {a_team}", f"{wa:.1%}", f"Kurs: {1/wa:.2f}")
