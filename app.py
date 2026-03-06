@@ -92,7 +92,6 @@ tab_bl, tab_pl = st.tabs(["🇩🇪 Bundesliga", "🏴󠁧󠁢󠁥󠁮󠁧󠁿 P
 
 def render_league_ui(df, league_name):
     avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
-    avg_h_ga, avg_a_ga = df['H_GA'].mean(), df['A_GA'].mean()
     
     st.title(f"⚽ {league_name} Predictor")
     
@@ -157,54 +156,55 @@ def render_league_ui(df, league_name):
     c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/max(px, 0.001):.2f}")
     c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/max(p2, 0.001):.2f}")
 
-    # --- TABELA PORÓWNAWCZA (PEŁNE STATYSTYKI) ---
+    # --- INTERAKTYWNA TABELA STATYSTYK ---
     st.divider()
-    st.markdown("### 📊 Szczegółowe Porównanie Statystyk")
+    st.markdown("### 🔍 Interaktywne Porównanie Statystyk")
     
-    stats_data = {
-        'Kategoria': [
-            'Gole Strzelone (Cały Sezon)', 'xG Strzelone (Cały Sezon)', 
-            'Gole Strzelone (Dom/Wyjazd)', 'xG Strzelone (Dom/Wyjazd)',
-            'Gole Stracone (Cały Sezon)', 'xG Stracone (Cały Sezon)',
-            'Gole Stracone (Dom/Wyjazd)', 'xG Stracone (Dom/Wyjazd)'
-        ],
-        f'{h_team} (Gospodarz)': [
-            h['T_GF'], h['TxG_F'], h['H_GF'], h['HxG_F'], 
-            h['T_GA'], h['TxG_A'], h['H_GA'], h['HxG_A']
-        ],
-        f'{a_team} (Gość)': [
-            a['T_GF'], a['TxG_F'], a['A_GF'], a['AxG_F'], 
-            a['T_GA'], a['TxG_A'], a['A_GA'], a['AxG_A']
-        ],
-        'Średnia Ligi': [
-            df['T_GF'].mean(), df['TxG_F'].mean(), 
-            avg_h_gf if 'Gospodarz' else avg_a_gf, # uproszczone dla czytelności
-            df['HxG_F'].mean(), # baza porównawcza
-            df['T_GA'].mean(), df['TxG_A'].mean(),
-            avg_h_ga, df['HxG_A'].mean()
-        ]
+    col_sel1, col_sel2 = st.columns(2)
+    with col_sel1:
+        stat_choice = st.selectbox("Wybierz statystykę", ["Gole", "xG", "Gole Stracone", "xG Stracone"], key=f"stat_sel_{league_name}")
+    with col_sel2:
+        scope_choice = st.selectbox("Zakres meczów", ["Cały sezon", "Dom (H) / Wyjazd (A)"], key=f"scope_sel_{league_name}")
+
+    # Mapowanie danych do wyboru użytkownika
+    map_keys = {
+        ("Gole", "Cały sezon"): ('T_GF', 'T_GF', 'T_GF'),
+        ("xG", "Cały sezon"): ('TxG_F', 'TxG_F', 'TxG_F'),
+        ("Gole Stracone", "Cały sezon"): ('T_GA', 'T_GA', 'T_GA'),
+        ("xG Stracone", "Cały sezon"): ('TxG_A', 'TxG_A', 'TxG_A'),
+        ("Gole", "Dom (H) / Wyjazd (A)"): ('H_GF', 'A_GF', 'H_GF'), # 3-cia wartość to klucz do średniej
+        ("xG", "Dom (H) / Wyjazd (A)"): ('HxG_F', 'AxG_F', 'HxG_F'),
+        ("Gole Stracone", "Dom (H) / Wyjazd (A)"): ('H_GA', 'A_GA', 'H_GA'),
+        ("xG Stracone", "Dom (H) / Wyjazd (A)"): ('HxG_A', 'AxG_A', 'HxG_A'),
     }
-    
-    comp_df = pd.DataFrame(stats_data)
-    
-    def highlight_stats(row):
+
+    key_h, key_a, key_avg = map_keys[(stat_choice, scope_choice)]
+    val_h = h[key_h]
+    val_a = a[key_a]
+    val_avg = df[key_avg].mean()
+
+    display_df = pd.DataFrame({
+        "Zespół": [h_team, a_team, "Średnia Ligi"],
+        "Rola": ["Gospodarz", "Gość", "-"],
+        stat_choice: [val_h, val_a, val_avg]
+    })
+
+    def apply_color(row):
         colors = [''] * len(row)
-        cat = row['Kategoria']
-        avg = row['Średnia Ligi']
+        if row["Zespół"] == "Średnia Ligi": return colors
         
-        for i in [1, 2]:
-            val = row.iloc[i]
-            # Atak (im więcej tym lepiej)
-            if 'Strzelone' in cat:
-                if val > avg * 1.05: colors[i] = 'background-color: rgba(0, 255, 0, 0.2)'
-                elif val < avg * 0.95: colors[i] = 'background-color: rgba(255, 0, 0, 0.2)'
-            # Obrona (im mniej tym lepiej)
-            elif 'Stracone' in cat:
-                if val < avg * 0.95: colors[i] = 'background-color: rgba(0, 255, 0, 0.2)'
-                elif val > avg * 1.05: colors[i] = 'background-color: rgba(255, 0, 0, 0.2)'
+        val = row[stat_choice]
+        # Atak: wyższa = zielona
+        if "Stracone" not in stat_choice:
+            if val > val_avg: colors[2] = 'background-color: rgba(0, 255, 0, 0.2)'
+            elif val < val_avg: colors[2] = 'background-color: rgba(255, 0, 0, 0.2)'
+        # Obrona: niższa = zielona
+        else:
+            if val < val_avg: colors[2] = 'background-color: rgba(0, 255, 0, 0.2)'
+            elif val > val_avg: colors[2] = 'background-color: rgba(255, 0, 0, 0.2)'
         return colors
 
-    st.table(comp_df.style.apply(highlight_stats, axis=1).format(precision=2))
+    st.table(display_df.style.apply(apply_color, axis=1).format({stat_choice: "{:.2f}"}))
 
     st.divider()
     st.markdown("### 📊 Porównanie Siły Zespołów")
