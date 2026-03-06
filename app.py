@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
 from scipy.stats import poisson
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -61,11 +62,8 @@ def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     return 1
 
 # --- SESSION STATE DLA MODYFIKATORÓW ---
-if 'mod_reset' not in st.session_state:
-    st.session_state.mod_reset = 0
-
-def reset_mods():
-    st.session_state.mod_reset += 1
+if 'mod_reset' not in st.session_state: st.session_state.mod_reset = 0
+def reset_mods(): st.session_state.mod_reset += 1
 
 # --- SIDEBAR ---
 st.sidebar.header("⚙️ Konfiguracja Wag")
@@ -91,25 +89,28 @@ fixed_rho = -0.15
 tab_bl, tab_pl = st.tabs(["🇩🇪 Bundesliga", "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League"])
 
 def render_league_ui(df, league_name):
+    # Obliczenie średnich ligowych do radaru
+    avg_liga = {
+        'GF': df['T_GF'].mean(),
+        'GA': df['T_GA'].mean(),
+        'xGF': df['TxG_F'].mean(),
+        'xGA': df['TxG_A'].mean()
+    }
     avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
     
     st.title(f"⚽ {league_name} Predictor")
     
     col_a, col_b = st.columns(2)
-    
     with col_a:
         h_team = st.selectbox(f"Gospodarz", df['Team'], index=0, key=f"h_{league_name}")
         h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
-        
-        # --- MODYFIKATORY GOSPODARZA ---
         with st.expander("🛠️ Modyfikatory Gospodarza"):
-            mod_range = list(range(-20, 21))
-            m_key = st.session_state.mod_reset
-            h_k = st.select_slider("KONTUZJE", options=mod_range, value=0, key=f"h_k_{league_name}_{m_key}")
-            h_f = st.select_slider("FORMA", options=mod_range, value=0, key=f"h_f_{league_name}_{m_key}")
-            h_s = st.select_slider("STYL GRY", options=mod_range, value=0, key=f"h_s_{league_name}_{m_key}")
-            h_p = st.select_slider("POGODA", options=mod_range, value=0, key=f"h_p_{league_name}_{m_key}")
+            mod_range = list(range(-20, 21)); m_key = st.session_state.mod_reset
+            h_k = st.select_slider("KONTUZJE", mod_range, 0, key=f"h_k_{league_name}_{m_key}")
+            h_f = st.select_slider("FORMA", mod_range, 0, key=f"h_f_{league_name}_{m_key}")
+            h_s = st.select_slider("STYL GRY", mod_range, 0, key=f"h_s_{league_name}_{m_key}")
+            h_p = st.select_slider("POGODA", mod_range, 0, key=f"h_p_{league_name}_{m_key}")
             h_total_mod = (h_k + h_f + h_s + h_p) / 100
             st.button("🧹 Resetuj", key=f"reset_h_{league_name}", on_click=reset_mods, use_container_width=True)
 
@@ -117,28 +118,24 @@ def render_league_ui(df, league_name):
         a_team = st.selectbox(f"Gość", df['Team'], index=1, key=f"a_{league_name}")
         a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
-        
-        # --- MODYFIKATORY GOŚCIA ---
         with st.expander("🛠️ Modyfikatory Gościa"):
-            mod_range = list(range(-20, 21))
-            m_key = st.session_state.mod_reset
-            a_k = st.select_slider("KONTUZJE", options=mod_range, value=0, key=f"a_k_{league_name}_{m_key}")
-            a_f = st.select_slider("FORMA", options=mod_range, value=0, key=f"a_f_{league_name}_{m_key}")
-            a_s = st.select_slider("STYL GRY", options=mod_range, value=0, key=f"a_s_{league_name}_{m_key}")
-            a_p = st.select_slider("POGODA", options=mod_range, value=0, key=f"a_p_{league_name}_{m_key}")
+            mod_range = list(range(-20, 21)); m_key = st.session_state.mod_reset
+            a_k = st.select_slider("KONTUZJE", mod_range, 0, key=f"a_k_{league_name}_{m_key}")
+            a_f = st.select_slider("FORMA", mod_range, 0, key=f"a_f_{league_name}_{m_key}")
+            a_s = st.select_slider("STYL GRY", mod_range, 0, key=f"a_s_{league_name}_{m_key}")
+            a_p = st.select_slider("POGODA", mod_range, 0, key=f"a_p_{league_name}_{m_key}")
             a_total_mod = (a_k + a_f + a_s + a_p) / 100
             st.button("🧹 Resetuj", key=f"reset_a_{league_name}", on_click=reset_mods, use_container_width=True)
 
     h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
 
+    # Logika wagowa Poisson
     l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3)
     m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3)
     l_a_r = (a['AxG_F']*w0 + a['A_GF']*w1 + a['TxG_F']*w2 + a['T_GF']*w3)
     m_a_r = (a['AxG_A']*w0 + a['A_GA']*w1 + a['TxG_A']*w2 + a['T_GA']*w3)
-
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
-
     lambda_f = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod)
     mu_f = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod)
 
@@ -149,100 +146,99 @@ def render_league_ui(df, league_name):
             p = poisson.pmf(x, lambda_f) * poisson.pmf(y, mu_f)
             matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_f, mu_f, fixed_rho)
     matrix /= matrix.sum()
-
     p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
 
+    # --- 1. SZANSE I KURSY ---
     st.divider()
     c1, c2, c3 = st.columns(3)
     c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/max(p1, 0.001):.2f}")
     c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/max(px, 0.001):.2f}")
     c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/max(p2, 0.001):.2f}")
 
+    # --- NOWY MODUŁ: WYKRES RADAROWY (NAD porównaniem siły) ---
+    st.divider()
+    st.markdown("### 🧬 Profil Zespołów (vs Średnia Ligowa)")
+
+    def get_radar_data(team_data, avg_liga):
+        categories = ['Gole Strzelone', 'Gole Stracone ↓', 'xG Strzelone', 'xG Stracone ↓']
+        team_values = [team_data['T_GF'], team_data['T_GA'], team_data['TxG_F'], team_data['TxG_A']]
+        liga_values = [avg_liga['GF'], avg_liga['GA'], avg_liga['xGF'], avg_liga['xGA']]
+        
+        # Normalizacja: 100 = średnia ligowa
+        normalized_values = []
+        for i in range(len(team_values)):
+            if '↓' in categories[i]: # Im mniej tym lepiej
+                norm = (avg_liga[categories[i].split(' ')[0]] / team_values[i]) * 100 if team_values[i] > 0 else 150
+            else: # Im więcej tym lepiej
+                norm = (team_values[i] / avg_liga[categories[i].split(' ')[0]]) * 100 if avg_liga[categories[i].split(' ')[0]] > 0 else 0
+            normalized_values.append(max(20, min(180, norm))) # Ograniczenie skali do radaru
+        return categories, normalized_values
+
+    h_categories, h_norm = get_radar_data(h, avg_liga)
+    a_categories, a_norm = get_radar_data(a, avg_liga)
+
+    fig_radar = go.Figure()
+    # Pętla, żeby zamknąć wykres
+    h_categories += [h_categories[0]]; h_norm += [h_norm[0]]
+    a_categories += [a_categories[0]]; a_norm += [a_norm[0]]
+
+    fig_radar.add_trace(go.Scatterpolar(r=h_norm, theta=h_categories, fill='toself', name=h_team, line_color='#1f77b4', opacity=0.7))
+    fig_radar.add_trace(go.Scatterpolar(r=a_norm, theta=a_categories, fill='toself', name=a_team, line_color='#ff7f0e', opacity=0.7))
+    # Linia odniesienia (średnia ligowa)
+    fig_radar.add_trace(go.Scatterpolar(r=[100]*len(h_categories), theta=h_categories, fill='none', name='Średnia Ligowa', line_color='black', line_dash='dash', opacity=0.5))
+
+    fig_radar.update_layout(
+        polar=dict(
+            radialaxis=dict(visible=True, range=[20, 180], tickvals=[50, 100, 150], ticktext=['-50%', 'Średnia', '+50%']),
+            angularaxis=dict(direction="clockwise", period=4)
+        ),
+        showlegend=True, height=500, margin=dict(l=50, r=50, t=50, b=50)
+    )
+    st.plotly_chart(fig_radar, use_container_width=True)
+
+    # --- 2. TABELA SIŁY ---
     st.divider()
     st.markdown("### 📊 Porównanie Siły Zespołów")
-    
     def format_strength(val, is_attack=True):
-        pct = (val - 1.0) * 100
-        color = "green" if (is_attack and val >= 1) or (not is_attack and val <= 1) else "red"
+        pct = (val - 1.0) * 100; color = "green" if (is_attack and val >= 1) or (not is_attack and val <= 1) else "red"
         return f":{color}[{val:.2f} ({pct:+.0f}%)]"
-
-    st.markdown(f"""
-    | Cecha | {h_team} (Gospodarz) | {a_team} (Gość) |
-    | :--- | :--- | :--- |
-    | **Siła Ataku** | {format_strength(h_atk_s, True)} | {format_strength(a_atk_s, True)} |
-    | **Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |
-    | **Łączny Modyfikator** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |
-    """)
+    st.markdown(f"| Cecha | {h_team} (Gospodarz) | {a_team} (Gość) |\n| :--- | :--- | :--- |\n| **Siła Ataku** | {format_strength(h_atk_s, True)} | {format_strength(a_atk_s, True)} |\n| **Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |\n| **Łączny Modyfikator** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |")
 
     with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
-        st.subheader("1. Średnie ligowe")
-        st.write(f"Średnia gospodarzy: `{avg_h_gf:.3f}` | Średnia gości: `{avg_a_gf:.3f}`")
-        sc1, sc2 = st.columns(2)
-        with sc1:
-            st.markdown(f"**{h_team}**")
-            st.write(f"🎯 **Bazowa Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
-        with sc2:
-            st.markdown(f"**{a_team}**")
-            st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
+        st.subheader("1. Średnie ligowe"); st.write(f"Średnia gospodarzy: `{avg_h_gf:.3f}` | Średnia gości: `{avg_a_gf:.3f}`")
+        sc1, sc2 = st.columns(2); 
+        with sc1: st.markdown(f"**{h_team}**"); st.write(f"🎯 **Bazowa Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
+        with sc2: st.markdown(f"**{a_team}**"); st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
         st.subheader("2. Parametry Poisson (Skorygowane)")
-        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}")
-        st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
+        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}"); st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
 
     with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
-        limit = 8
-        fig, ax = plt.subplots(figsize=(10, 5))
-        sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
-        plt.xlabel(f"Gole {a_team}") 
-        plt.ylabel(f"Gole {h_team}") 
-        st.pyplot(fig)
+        limit = 8; fig, ax = plt.subplots(figsize=(10, 5)); sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False); plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}"); st.pyplot(fig)
 
     st.divider()
-    st.subheader("📉 Analiza Under / Over")
-    lines = [1.5, 2.5, 3.5, 4.5]
-    ou_cols = st.columns(len(lines))
+    st.subheader("📉 Analiza Under / Over"); lines = [1.5, 2.5, 3.5, 4.5]; ou_cols = st.columns(len(lines))
     for i, line in enumerate(lines):
-        prob_under = sum(matrix[x, y] for x in range(max_g) for y in range(max_g) if x + y < line)
-        prob_over = 1 - prob_under
-        with ou_cols[i]:
-            st.markdown(f"**Linia {line}**")
-            st.write(f"🟢 **OVER**: {prob_over:.1%}")
-            st.write(f"🔴 **UNDER**: {prob_under:.1%}")
+        prob_under = sum(matrix[x, y] for x in range(max_g) for y in range(max_g) if x + y < line); prob_over = 1 - prob_under
+        with ou_cols[i]: st.markdown(f"**Linia {line}**"); st.write(f"🟢 **OVER**: {prob_over:.1%}"); st.write(f"🔴 **UNDER**: {prob_under:.1%}")
 
     st.divider()
-    st.subheader("🥅 Obie Drużyny Strzelą (BTTS)")
-    prob_btts_yes = sum(matrix[x, y] for x in range(1, max_g) for y in range(1, max_g))
-    prob_btts_no = 1 - prob_btts_yes
-    b1, b2 = st.columns(2)
-    with b1:
-        st.write(f"🟢 **TAK**: {prob_btts_yes:.1%}")
-    with b2:
-        st.write(f"🔴 **NIE**: {prob_btts_no:.1%}")
+    st.subheader("🥅 Obie Drużyny Strzelą (BTTS)"); prob_btts_yes = sum(matrix[x, y] for x in range(1, max_g) for y in range(1, max_g)); prob_btts_no = 1 - prob_btts_yes
+    b1, b2 = st.columns(2);
+    with b1: st.write(f"🟢 **TAK**: {prob_btts_yes:.1%}"); 
+    with b2: st.write(f"🔴 **NIE**: {prob_btts_no:.1%}")
 
     st.divider()
     if st.button(f"🎲 URUCHOM ANALIZĘ 1 000 000 SCENARIUSZY", use_container_width=True, key=f"sim_{league_name}"):
         with st.status("Trwa symulowanie (1 mln prób)...", expanded=True) as status:
-            n_sim = 1000000
-            sim_h = np.random.poisson(lambda_f, n_sim)
-            sim_a = np.random.poisson(mu_f, n_sim)
+            n_sim = 1000000; sim_h = np.random.poisson(lambda_f, n_sim); sim_a = np.random.poisson(mu_f, n_sim)
             res_df = pd.DataFrame({'H': sim_h, 'A': sim_a, 'Total': sim_h + sim_a})
             most_common_row = res_df.groupby(['H', 'A']).size().idxmax()
             st.success(f"🏆 Najczęstszy wynik: **{most_common_row[0]}:{most_common_row[1]}**")
-            fig2, ax2 = plt.subplots(figsize=(10, 4))
-            sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=2)
-            sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=2)
-            plt.xlim(-0.5, 8.5) 
-            plt.legend()
-            st.pyplot(fig2)
+            fig2, ax2 = plt.subplots(figsize=(10, 4)); sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=2); sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=2); plt.xlim(-0.5, 8.5); plt.legend(); st.pyplot(fig2)
             st.markdown("### 🔍 Wnioski")
-            col_w1, col_w2 = st.columns(2)
-            with col_w1:
-                st.write(f"🏠 Wygrane {h_team}: **{(sim_h > sim_a).sum():,}**")
-                st.write(f"🤝 Remisy: **{(sim_h == sim_a).sum():,}**")
-                st.write(f"🚀 Wygrane {a_team}: **{(sim_a > sim_h).sum():,}**")
-            with col_w2:
-                st.write(f"🔥 Over 4.5: **{(res_df['Total'] >= 4.5).sum():,}**")
-                st.write(f"🧤 Czyste konto {h_team}: **{(sim_a == 0).sum():,}**")
-                st.write(f"🥅 BTTS: TAK: **{((sim_h > 0) & (sim_a > 0)).sum():,}**")
+            col_w1, col_w2 = st.columns(2);
+            with col_w1: st.write(f"🏠 Wygrane {h_team}: **{(sim_h > sim_a).sum():,}**"); st.write(f"🤝 Remisy: **{(sim_h == sim_a).sum():,}**"); st.write(f"🚀 Wygrane {a_team}: **{(sim_a > sim_h).sum():,}**")
+            with col_w2: st.write(f"🔥 Over 4.5: **{(res_df['Total'] >= 4.5).sum():,}**"); st.write(f"🧤 Czyste konto {h_team}: **{(sim_a == 0).sum():,}**"); st.write(f"🥅 BTTS: TAK: **{((sim_h > 0) & (sim_a > 0)).sum():,}**")
             status.update(label="Analiza zakończona!", state="complete")
 
 with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
