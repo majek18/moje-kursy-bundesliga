@@ -4,9 +4,16 @@ import numpy as np
 from scipy.stats import poisson
 import seaborn as sns
 import matplotlib.pyplot as plt
+from openai import OpenAI
 
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Football Predictor Pro", layout="wide")
+
+# --- KONFIGURACJA AI (Llama 3.1 via Hugging Face) ---
+hf_token = st.secrets.get("HF_TOKEN")
+client = None
+if hf_token:
+    client = OpenAI(base_url="https://router.huggingface.co/v1", api_key=hf_token)
 
 # --- DANE BAZOWE: BUNDESLIGA ---
 @st.cache_data
@@ -60,7 +67,7 @@ def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 1 and y == 1: return 1 - rho
     return 1
 
-# --- SESSION STATE DLA MODYFIKATORÓW ---
+# --- SESSION STATE ---
 if 'mod_reset' not in st.session_state:
     st.session_state.mod_reset = 0
 
@@ -92,16 +99,13 @@ tab_bl, tab_pl = st.tabs(["🇩🇪 Bundesliga", "🏴󠁧󠁢󠁥󠁮󠁧󠁿 P
 
 def render_league_ui(df, league_name):
     avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
-    
     st.title(f"⚽ {league_name} Predictor")
     
     col_a, col_b = st.columns(2)
-    
     with col_a:
         h_team = st.selectbox(f"Gospodarz", df['Team'], index=0, key=f"h_{league_name}")
         h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
-        
         with st.expander("🛠️ Modyfikatory Gospodarza"):
             mod_range = list(range(-20, 21))
             m_key = st.session_state.mod_reset
@@ -116,7 +120,6 @@ def render_league_ui(df, league_name):
         a_team = st.selectbox(f"Gość", df['Team'], index=1, key=f"a_{league_name}")
         a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
-        
         with st.expander("🛠️ Modyfikatory Gościa"):
             mod_range = list(range(-20, 21))
             m_key = st.session_state.mod_reset
@@ -127,16 +130,14 @@ def render_league_ui(df, league_name):
             a_total_mod = (a_k + a_f + a_s + a_p) / 100
             st.button("🧹 Resetuj", key=f"reset_a_{league_name}", on_click=reset_mods, use_container_width=True)
 
+    # --- OBLICZENIA ---
     h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
-
     l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3)
     m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3)
     l_a_r = (a['AxG_F']*w0 + a['A_GF']*w1 + a['TxG_F']*w2 + a['T_GF']*w3)
     m_a_r = (a['AxG_A']*w0 + a['A_GA']*w1 + a['TxG_A']*w2 + a['T_GA']*w3)
-
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
-
     lambda_f = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod)
     mu_f = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod)
 
@@ -147,16 +148,15 @@ def render_league_ui(df, league_name):
             p = poisson.pmf(x, lambda_f) * poisson.pmf(y, mu_f)
             matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_f, mu_f, fixed_rho)
     matrix /= matrix.sum()
-
     p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
 
+    # --- WIZUALIZACJA WYNIKÓW ---
     st.divider()
     c1, c2, c3 = st.columns(3)
     c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/max(p1, 0.001):.2f}")
     c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/max(px, 0.001):.2f}")
     c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/max(p2, 0.001):.2f}")
 
-    # --- OCZEKIWANE GOLE (LAMBDA / MU) ---
     st.markdown("#### ⚽ Przewidywana liczba goli (ExG)")
     ex_h, ex_a = st.columns(2)
     ex_h.metric(f"ExG {h_team}", f"{lambda_f:.2f}")
@@ -168,7 +168,6 @@ def render_league_ui(df, league_name):
         pct = (val - 1.0) * 100
         color = "green" if (is_attack and val >= 1) or (not is_attack and val <= 1) else "red"
         return f":{color}[{val:.2f} ({pct:+.0f}%)]"
-
     st.markdown(f"""
     | Cecha | {h_team} (Gospodarz) | {a_team} (Gość) |
     | :--- | :--- | :--- |
@@ -195,8 +194,8 @@ def render_league_ui(df, league_name):
         limit = 8
         fig, ax = plt.subplots(figsize=(10, 5))
         sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
-        plt.xlabel(f"Gole {a_team}") 
-        plt.ylabel(f"Gole {h_team}") 
+        plt.xlabel(f"Gole {a_team}")
+        plt.ylabel(f"Gole {h_team}")
         st.pyplot(fig)
 
     st.divider()
@@ -233,7 +232,7 @@ def render_league_ui(df, league_name):
             fig2, ax2 = plt.subplots(figsize=(10, 4))
             sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=2)
             sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=2)
-            plt.xlim(-0.5, 8.5) 
+            plt.xlim(-0.5, 8.5)
             plt.legend()
             st.pyplot(fig2)
             st.markdown("### 🔍 Wnioski")
@@ -248,5 +247,51 @@ def render_league_ui(df, league_name):
                 st.write(f"🥅 BTTS: TAK: **{((sim_h > 0) & (sim_a > 0)).sum():,}**")
             status.update(label="Analiza zakończona!", state="complete")
 
-with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
-with tab_pl: render_league_ui(load_premier_league(), "Premier League")
+    # --- MODUŁ CZATU AI (NA SAMYM DOLE) ---
+    st.divider()
+    st.subheader("🤖 AI Sport Analyst (Llama 3.1)")
+    
+    if client:
+        chat_key = f"chat_history_{league_name}"
+        if chat_key not in st.session_state:
+            st.session_state[chat_key] = []
+
+        # Wyświetlanie historii rozmowy
+        for msg in st.session_state[chat_key]:
+            with st.chat_message(msg["role"]):
+                st.markdown(msg["content"])
+
+        # Input użytkownika
+        if prompt := st.chat_input(f"Zapytaj o mecz {h_team} - {a_team}", key=f"ai_input_{league_name}"):
+            st.session_state[chat_key].append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+            with st.chat_message("assistant"):
+                try:
+                    # Przekazujemy AI kontekst Twoich obliczeń
+                    context_prompt = f"""Jesteś ekspertem analitykiem. Analizujesz mecz {league_name}: {h_team} vs {a_team}.
+                    Twoje obliczenia (Poisson):
+                    - Szanse: {p1:.1%} (Wygrana {h_team}), {px:.1%} (Remis), {p2:.1%} (Wygrana {a_team}).
+                    - Przewidywane gole (ExG): {h_team}: {lambda_f:.2f}, {a_team}: {mu_f:.2f}.
+                    - Kursy: {1/max(p1, 0.001):.2f} / {1/max(px, 0.001):.2f} / {1/max(p2, 0.001):.2f}.
+                    Analizuj te dane i odpowiedz krótko na pytanie: {prompt}"""
+
+                    response = client.chat.completions.create(
+                        model="meta-llama/Llama-3.1-8B-Instruct:novita",
+                        messages=[{"role": "user", "content": context_prompt}],
+                        max_tokens=300
+                    )
+                    answer = response.choices[0].message.content
+                    st.markdown(answer)
+                    st.session_state[chat_key].append({"role": "assistant", "content": answer})
+                except Exception as e:
+                    st.error(f"AI Error: {e}")
+    else:
+        st.info("💡 Dodaj `HF_TOKEN` w Secrets, aby odblokować analizę AI.")
+
+# --- RENDEROWANIE TABÓW ---
+with tab_bl: 
+    render_league_ui(load_bundesliga(), "Bundesliga")
+with tab_pl: 
+    render_league_ui(load_premier_league(), "Premier League")
