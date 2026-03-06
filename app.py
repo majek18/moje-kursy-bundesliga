@@ -92,6 +92,7 @@ tab_bl, tab_pl = st.tabs(["🇩🇪 Bundesliga", "🏴󠁧󠁢󠁥󠁮󠁧󠁿 P
 
 def render_league_ui(df, league_name):
     avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
+    avg_h_ga, avg_a_ga = df['H_GA'].mean(), df['A_GA'].mean()
     
     st.title(f"⚽ {league_name} Predictor")
     
@@ -156,35 +157,51 @@ def render_league_ui(df, league_name):
     c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/max(px, 0.001):.2f}")
     c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/max(p2, 0.001):.2f}")
 
-    # --- NOWA TABELA PORÓWNAWCZA (ZAMIAST RADARU) ---
+    # --- TABELA PORÓWNAWCZA (PEŁNE STATYSTYKI) ---
     st.divider()
-    st.markdown("### 📊 Szczegółowe Porównanie Statystyk (vs Średnia Ligowa)")
+    st.markdown("### 📊 Szczegółowe Porównanie Statystyk")
     
     stats_data = {
-        'Statystyka': ['Gole Strzelone (Śr)', 'xG Strzelone (Śr)', 'Gole Stracone (Śr)', 'xG Stracone (Śr)'],
-        h_team: [h['T_GF'], h['TxG_F'], h['T_GA'], h['TxG_A']],
-        a_team: [a['T_GF'], a['TxG_F'], a['T_GA'], a['TxG_A']],
-        'Średnia Ligi': [df['T_GF'].mean(), df['TxG_F'].mean(), df['T_GA'].mean(), df['TxG_A'].mean()]
+        'Kategoria': [
+            'Gole Strzelone (Cały Sezon)', 'xG Strzelone (Cały Sezon)', 
+            'Gole Strzelone (Dom/Wyjazd)', 'xG Strzelone (Dom/Wyjazd)',
+            'Gole Stracone (Cały Sezon)', 'xG Stracone (Cały Sezon)',
+            'Gole Stracone (Dom/Wyjazd)', 'xG Stracone (Dom/Wyjazd)'
+        ],
+        f'{h_team} (Gospodarz)': [
+            h['T_GF'], h['TxG_F'], h['H_GF'], h['HxG_F'], 
+            h['T_GA'], h['TxG_A'], h['H_GA'], h['HxG_A']
+        ],
+        f'{a_team} (Gość)': [
+            a['T_GF'], a['TxG_F'], a['A_GF'], a['AxG_F'], 
+            a['T_GA'], a['TxG_A'], a['A_GA'], a['AxG_A']
+        ],
+        'Średnia Ligi': [
+            df['T_GF'].mean(), df['TxG_F'].mean(), 
+            avg_h_gf if 'Gospodarz' else avg_a_gf, # uproszczone dla czytelności
+            df['HxG_F'].mean(), # baza porównawcza
+            df['T_GA'].mean(), df['TxG_A'].mean(),
+            avg_h_ga, df['HxG_A'].mean()
+        ]
     }
     
     comp_df = pd.DataFrame(stats_data)
     
     def highlight_stats(row):
         colors = [''] * len(row)
-        stat_name = row['Statystyka']
+        cat = row['Kategoria']
         avg = row['Średnia Ligi']
         
-        # Indeksy kolumn zespołów to 1 i 2
         for i in [1, 2]:
             val = row.iloc[i]
-            # Zasada: Im więcej tym lepiej (Atak)
-            if 'Strzelone' in stat_name:
-                if val > avg: colors[i] = 'background-color: rgba(0, 255, 0, 0.2)'
-                elif val < avg: colors[i] = 'background-color: rgba(255, 0, 0, 0.2)'
-            # Zasada: Im mniej tym lepiej (Obrona)
-            elif 'Stracone' in stat_name:
-                if val < avg: colors[i] = 'background-color: rgba(0, 255, 0, 0.2)'
-                elif val > avg: colors[i] = 'background-color: rgba(255, 0, 0, 0.2)'
+            # Atak (im więcej tym lepiej)
+            if 'Strzelone' in cat:
+                if val > avg * 1.05: colors[i] = 'background-color: rgba(0, 255, 0, 0.2)'
+                elif val < avg * 0.95: colors[i] = 'background-color: rgba(255, 0, 0, 0.2)'
+            # Obrona (im mniej tym lepiej)
+            elif 'Stracone' in cat:
+                if val < avg * 0.95: colors[i] = 'background-color: rgba(0, 255, 0, 0.2)'
+                elif val > avg * 1.05: colors[i] = 'background-color: rgba(255, 0, 0, 0.2)'
         return colors
 
     st.table(comp_df.style.apply(highlight_stats, axis=1).format(precision=2))
