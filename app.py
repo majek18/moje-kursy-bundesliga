@@ -34,70 +34,80 @@ df = load_data()
 avg_h_gf = df['H_GF'].mean()
 avg_a_gf = df['A_GF'].mean()
 
-# --- SIDEBAR: KONFIGURACJA WAG (SELECTBOXY) ---
+# --- SIDEBAR: WAGI ---
 st.sidebar.header("⚖️ Konfiguracja Wag")
 
-# Opcje co 10 punktów procentowych
-options = [i for i in range(0, 110, 10)]
-# Mapowanie: 40 -> index 4, 30 -> index 3 itd.
+# Domyślne wagi zgodne z opisem: 40, 25, 20, 15
+D_W = [40, 25, 20, 15]
+# Opcje wyboru: 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60...
+options = [i for i in range(0, 105, 5)]
 
-if 'sel0' not in st.session_state: st.session_state.sel0 = 40
-if 'sel1' not in st.session_state: st.session_state.sel1 = 30
-if 'sel2' not in st.session_state: st.session_state.sel2 = 20
-if 'sel3' not in st.session_state: st.session_state.sel3 = 10
+if 'w_xg_dv' not in st.session_state: st.session_state.w_xg_dv = D_W[0]
+if 'w_g_dv' not in st.session_state: st.session_state.w_g_dv = D_W[1]
+if 'w_xg_all' not in st.session_state: st.session_state.w_xg_all = D_W[2]
+if 'w_g_all' not in st.session_state: st.session_state.w_g_all = D_W[3]
 
-if st.sidebar.button("🔄 Resetuj wagi (40/30/20/10)"):
-    st.session_state.sel0 = 40
-    st.session_state.sel1 = 30
-    st.session_state.sel2 = 20
-    st.session_state.sel3 = 10
+if st.sidebar.button("🔄 Resetuj wagi (40/25/20/15)"):
+    st.session_state.w_xg_dv, st.session_state.w_g_dv = D_W[0], D_W[1]
+    st.session_state.w_xg_all, st.session_state.w_g_all = D_W[2], D_W[3]
     st.rerun()
 
-v0 = st.sidebar.selectbox("🏠 Gole Dom/Wyjazd (%)", options, index=options.index(st.session_state.sel0), key='sel0')
-v1 = st.sidebar.selectbox("🌍 Gole Cały Sezon (%)", options, index=options.index(st.session_state.sel1), key='sel1')
-v2 = st.sidebar.selectbox("✈️ xG Dom/Wyjazd (%)", options, index=options.index(st.session_state.sel2), key='sel2')
-v3 = st.sidebar.selectbox("📈 xG Cały Sezon (%)", options, index=options.index(st.session_state.sel3), key='sel3')
+v0 = st.sidebar.selectbox("🎯 xG Sezon (dom/wyjazd) %", options, index=options.index(st.session_state.w_xg_dv), key='w_xg_dv')
+v1 = st.sidebar.selectbox("⚽ Gole Sezon (dom/wyjazd) %", options, index=options.index(st.session_state.w_g_dv), key='w_g_dv')
+v2 = st.sidebar.selectbox("📊 xG Sezon (cały) %", options, index=options.index(st.session_state.w_xg_all), key='w_xg_all')
+v3 = st.sidebar.selectbox("📉 Gole Sezon (cały) %", options, index=options.index(st.session_state.w_g_all), key='w_g_all')
 
-# Konwersja na ułamki do obliczeń
-w0, w1, w2, w3 = v0/100, v1/100, v2/100, v3/100
-
+w_xg_dv, w_g_dv, w_xg_all, w_g_all = v0/100, v1/100, v2/100, v3/100
 total_pct = v0 + v1 + v2 + v3
 color = "green" if total_pct == 100 else "red"
 st.sidebar.markdown(f"### Suma: :{color}[{total_pct}%]")
 
 if total_pct != 100:
-    st.sidebar.error("Suma wag musi wynosić dokładnie 100%!")
+    st.sidebar.error("Suma wag musi wynosić 100%!")
     st.stop()
 
-# --- WYBÓR MECZU ---
+# --- INTERFEJS GŁÓWNY ---
 st.title("⚽ Bundesliga Predictor Pro")
 c1, c2 = st.columns(2)
 with c1:
     h_team = st.selectbox("Gospodarz", df['Team'], index=0)
     h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
-    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
+    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=120)
 with c2:
     a_team = st.selectbox("Gość", df['Team'], index=11)
     a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
-    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
+    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=120)
 
-# --- OBLICZENIA SIŁY ---
+# --- OBLICZENIA POISSONA ---
 h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
 
-h_atk_r = (h['H_GF']*w0 + h['T_GF']*w1 + h['HxG_F']*w2 + h['TxG_F']*w3)
-h_def_r = (h['H_GA']*w0 + h['T_GA']*w1 + h['HxG_A']*w2 + h['TxG_A']*w3)
-a_atk_r = (a['A_GF']*w0 + a['T_GF']*w1 + a['AxG_F']*w2 + a['TxG_F']*w3)
-a_def_r = (a['A_GA']*w0 + a['T_GA']*w1 + a['AxG_A']*w2 + a['TxG_A']*w3)
+# Logika wag: xG D/W (w0), Gole D/W (w1), xG All (w2), Gole All (w3)
+lambda_h_raw = (h['HxG_F']*w_xg_dv + h['H_GF']*w_g_dv + h['TxG_F']*w_xg_all + h['T_GF']*w_g_all)
+mu_h_raw = (h['HxG_A']*w_xg_dv + h['H_GA']*w_g_dv + h['TxG_A']*w_xg_all + h['T_GA']*w_g_all)
+lambda_a_raw = (a['AxG_F']*w_xg_dv + a['A_GF']*w_g_dv + a['TxG_F']*w_xg_all + a['T_GF']*w_g_all)
+mu_a_raw = (a['AxG_A']*w_xg_dv + a['A_GA']*w_g_dv + a['TxG_A']*w_xg_all + a['T_GA']*w_g_all)
 
-h_atk_s, h_def_s = (h_atk_r / avg_h_gf), (h_def_r / avg_a_gf)
-a_atk_s, a_def_s = (a_atk_r / avg_a_gf), (a_def_r / avg_h_gf)
+h_atk_s, h_def_s = (lambda_h_raw / avg_h_gf), (mu_h_raw / avg_a_gf)
+a_atk_s, a_def_s = (lambda_a_raw / avg_a_gf), (mu_a_raw / avg_h_gf)
 
-lambda_h = h_atk_s * a_def_s * avg_h_gf
-mu_a = a_atk_s * h_def_s * avg_a_gf
+lambda_final = h_atk_s * a_def_s * avg_h_gf
+mu_final = a_atk_s * h_def_s * avg_a_gf
 
-# --- TABELA SIŁY ---
+# Macierz wyników
+max_goals = 10
+matrix = np.outer(poisson.pmf(range(max_goals), lambda_final), poisson.pmf(range(max_goals), mu_final))
+p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
+
+# --- NOWA SEKCJA: DUŻE PROCENTY I KURSY ---
 st.divider()
-st.write("### 📊 Współczynniki Siły (vs Średnia Ligowa)")
+st.subheader("🎯 Prognoza Wyniku Końcowego")
+m1, mx, m2 = st.columns(3)
+m1.metric(label=f"Wygrana {h_team}", value=f"{p1:.1%}", delta=f"Kurs: {1/p1:.2f}")
+mx.metric(label="Remis", value=f"{px:.1%}", delta=f"Kurs: {1/px:.2f}")
+m2.metric(label=f"Wygrana {a_team}", value=f"{p2:.1%}", delta=f"Kurs: {1/p2:.2f}")
+
+# --- TABELA WSPÓŁCZYNNIKÓW ---
+st.write("### 📊 Współczynniki Siły Drużyn")
 def fmt_s(val, is_def=False):
     pct = (val - 1)
     color = "green" if (pct < 0 if is_def else pct > 0) else "red"
@@ -106,39 +116,35 @@ def fmt_s(val, is_def=False):
 st.markdown(f"""
 | Drużyna | Atak (Strength) | Obrona (Strength) | Prognozowane Gole |
 | :--- | :--- | :--- | :--- |
-| **{h_team}** | {fmt_s(h_atk_s)} | {fmt_s(h_def_s, True)} | **{lambda_h:.2f}** |
-| **{a_team}** | {fmt_s(a_atk_s)} | {fmt_s(a_def_s, True)} | **{mu_a:.2f}** |
+| **{h_team}** | {fmt_s(h_atk_s)} | {fmt_s(h_def_s, True)} | **{lambda_final:.2f}** |
+| **{a_team}** | {fmt_s(a_atk_s)} | {fmt_s(a_def_s, True)} | **{mu_final:.2f}** |
 """)
 
-# --- ANALIZA VALUE ---
-matrix = np.outer(poisson.pmf(range(7), lambda_h), poisson.pmf(range(7), mu_a))
-matrix /= matrix.sum()
-p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
+# --- TABELA VALUE BET ---
+st.write("### 🏦 Kalkulator Value Bet")
+st.caption("Wpisz kursy bukmachera, aby sprawdzić, czy model widzi okazję.")
+ci1, ci2, ci3 = st.columns(3)
+with ci1: bk1 = st.text_input(f"Kurs na {h_team}", placeholder="np. 1.85")
+with ci2: bkx = st.text_input("Kurs na X", placeholder="np. 3.40")
+with ci3: bk2 = st.text_input(f"Kurs na {a_team}", placeholder="np. 4.50")
 
-st.write("### 🏦 Analiza Opłacalności (Value Bet)")
-cin1, cin2, cin3 = st.columns(3)
-with cin1: bk1 = st.text_input(f"Kurs na {h_team} (1)", placeholder="np. 1.45")
-with cin2: bkx = st.text_input("Kurs na Remis (X)", placeholder="np. 4.20")
-with cin3: bk2 = st.text_input(f"Kurs na {a_team} (2)", placeholder="np. 6.50")
-
-def check_v(prob, b_k):
+def get_v(prob, bk):
     try:
-        bk = float(b_k.replace(',', '.'))
-        my_k = 1/prob
-        if bk > my_k: return f"✅ TAK ({bk:.2f})"
-        return f"❌ NIE ({bk:.2f})"
+        k = float(bk.replace(',', '.'))
+        return f"✅ TAK ({k:.2f})" if k > (1/prob) else f"❌ NIE ({k:.2f})"
     except: return "-"
 
-res_df = pd.DataFrame({
-    "Typ": ["1 (Gospodarz)", "X (Remis)", "2 (Gość)"],
-    "Szanse Modelu": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"],
-    "Kurs Fair": [f"{1/p1:.2f}", f"{1/px:.2f}", f"{1/p2:.2f}"],
-    "Value?": [check_v(p1, bk1), check_v(px, bkx), check_v(p2, bk2)]
-})
-st.table(res_df)
+value_data = {
+    "Typ": ["1", "X", "2"],
+    "Twoje Szanse": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"],
+    "Kurs Sprawiedliwy": [f"{1/p1:.2f}", f"{1/px:.2f}", f"{1/p2:.2f}"],
+    "Opłacalność?": [get_v(p1, bk1), get_v(px, bkx), get_v(p2, bk2)]
+}
+st.table(value_data)
 
-with st.expander("Zobacz macierz prawdopodobieństwa"):
+with st.expander("Analityczna macierz prawdopodobieństwa (Heatmap)"):
+    
     fig, ax = plt.subplots(figsize=(10, 4))
-    sns.heatmap(matrix, annot=True, fmt=".1%", cmap="YlGnBu", cbar=False)
+    sns.heatmap(matrix[:6, :6], annot=True, fmt=".1%", cmap="YlGnBu", cbar=False)
     plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
     st.pyplot(fig)
