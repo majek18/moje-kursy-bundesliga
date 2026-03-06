@@ -33,7 +33,7 @@ def load_data():
 df = load_data()
 avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
 
-# --- FUNKCJA DIXONA-COLESA ---
+# --- FUNKCJA DIXON-COLESA ---
 def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 0 and y == 0: return 1 - (l_h * m_a * rho)
     if x == 0 and y == 1: return 1 + (l_h * rho)
@@ -77,18 +77,116 @@ with col_b:
 
 h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
 
+# --- ŚREDNIE WAŻONE ---
 l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3)
 m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3)
 l_a_r = (a['AxG_F']*w0 + a['A_GF']*w1 + a['TxG_F']*w2 + a['T_GF']*w3)
 m_a_r = (a['AxG_A']*w0 + a['A_GA']*w1 + a['TxG_A']*w2 + a['T_GA']*w3)
 
+# --- SIŁA DRUŻYN ---
 h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
 a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 
+# --- LAMBDA ---
 lambda_f = h_atk_s * a_def_s * avg_h_gf
 mu_f = a_atk_s * h_def_s * avg_a_gf
 
-# Macierz
+# --- POKAZANIE KROKÓW OBLICZEŃ ---
+st.divider()
+st.subheader("🧠 Kroki obliczeń modelu")
+
+st.write("### 1️⃣ Średnie ważone gole / xG")
+st.markdown(f"""
+**{h_team} – Atak (home)**
+
+λ_raw =  
+({h['HxG_F']:.2f} × {w0:.2f}) +  
+({h['H_GF']:.2f} × {w1:.2f}) +  
+({h['TxG_F']:.2f} × {w2:.2f}) +  
+({h['T_GF']:.2f} × {w3:.2f})
+
+= **{l_h_r:.3f}**
+
+---
+
+**{h_team} – Obrona (home)**
+
+μ_raw =  
+({h['HxG_A']:.2f} × {w0:.2f}) +  
+({h['H_GA']:.2f} × {w1:.2f}) +  
+({h['TxG_A']:.2f} × {w2:.2f}) +  
+({h['T_GA']:.2f} × {w3:.2f})
+
+= **{m_h_r:.3f}**
+
+---
+
+**{a_team} – Atak (away)**
+
+λ_raw =  
+({a['AxG_F']:.2f} × {w0:.2f}) +  
+({a['A_GF']:.2f} × {w1:.2f}) +  
+({a['TxG_F']:.2f} × {w2:.2f}) +  
+({a['T_GF']:.2f} × {w3:.2f})
+
+= **{l_a_r:.3f}**
+
+---
+
+**{a_team} – Obrona (away)**
+
+μ_raw =  
+({a['AxG_A']:.2f} × {w0:.2f}) +  
+({a['A_GA']:.2f} × {w1:.2f}) +  
+({a['TxG_A']:.2f} × {w2:.2f}) +  
+({a['T_GA']:.2f} × {w3:.2f})
+
+= **{m_a_r:.3f}**
+""")
+
+st.write("### 2️⃣ Współczynnik siły drużyn")
+st.markdown(f"""
+**Atak gospodarzy**
+
+Attack Strength = λ_raw / średnia liga home goals
+
+= {l_h_r:.3f} / {avg_h_gf:.3f} = **{h_atk_s:.3f}**
+
+**Obrona gospodarzy**
+
+Defense Strength = μ_raw / średnia liga away goals
+
+= {m_h_r:.3f} / {avg_a_gf:.3f} = **{h_def_s:.3f}**
+
+**Atak gości**
+
+Attack Strength = λ_raw / średnia liga away goals
+
+= {l_a_r:.3f} / {avg_a_gf:.3f} = **{a_atk_s:.3f}**
+
+**Obrona gości**
+
+Defense Strength = μ_raw / średnia liga home goals
+
+= {m_a_r:.3f} / {avg_h_gf:.3f} = **{a_def_s:.3f}**
+""")
+
+st.write("### 3️⃣ Oczekiwane gole (λ Poissona)")
+st.markdown(f"""
+**λ gospodarzy**
+
+λ = Attack_home × Defense_away × avg_home_goals
+
+= {h_atk_s:.3f} × {a_def_s:.3f} × {avg_h_gf:.3f} = **{lambda_f:.3f}**
+
+**λ gości**
+
+μ = Attack_away × Defense_home × avg_away_goals
+
+= {a_atk_s:.3f} × {h_def_s:.3f} × {avg_a_gf:.3f} = **{mu_f:.3f}**
+""")
+
+# --- MACIERZ DIXON-COLES ---
 max_g = 12
 matrix = np.zeros((max_g, max_g))
 for x in range(max_g):
@@ -99,14 +197,14 @@ matrix /= matrix.sum()
 
 p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
 
-# --- WIDOK: 1X2 ---
+# --- WIDOK 1X2 ---
 st.divider()
 c1, c2, c3 = st.columns(3)
 c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
 c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
 c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
 
-# --- PRZYWRÓCONA TABELA WSPÓŁCZYNNIKÓW ---
+# --- TABELA WSPÓŁCZYNNIKÓW ---
 st.write("### 📊 Współczynniki Siły Drużyn")
 def fmt_s(val, is_def=False):
     diff = (val - 1)
@@ -120,9 +218,8 @@ st.markdown(f"""
 | **{a_team}** | {fmt_s(a_atk_s)} | {fmt_s(a_def_s, True)} | **{mu_f:.2f}** |
 """)
 
-# --- MACIERZ ---
+# --- MACIERZ Prawdopodobieństwa ---
 st.write("### ⚽ Macierz Prawdopodobieństwa (0-7 goli)")
-
 limit = 8
 fig, ax = plt.subplots(figsize=(10, 5))
 sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
@@ -139,27 +236,4 @@ for i, line in enumerate(lines):
     o_p = 1 - u_p
     with ou_cols[i]:
         st.markdown(f"**Linia {line}**")
-        st.write(f"🟢 **OVER**: {o_p:.1%} (k: {1/o_p:.2f})")
-        st.write(f"🔴 **UNDER**: {u_p:.1%} (k: {1/u_p:.2f})")
-        st.progress(o_p)
-
-# --- KALKULATOR VALUE ---
-st.divider()
-st.write("### 🏦 Kalkulator Value Bet")
-v1, v2, v3 = st.columns(3)
-with v1: bk1 = st.text_input(f"Kurs {h_team}", "2.00")
-with v2: bkx = st.text_input("Kurs X", "3.40")
-with v3: bk2 = st.text_input(f"Kurs {a_team}", "4.00")
-
-def check_v(prob, bk):
-    try:
-        k = float(bk.replace(',', '.'))
-        return f"✅ TAK ({k:.2f})" if k > (1/prob) else f"❌ NIE ({k:.2f})"
-    except: return "-"
-
-st.table({
-    "Typ": ["1", "X", "2"],
-    "Model (%)": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"],
-    "Kurs Fair": [f"{1/p1:.2f}", f"{1/px:.2f}", f"{1/p2:.2f}"],
-    "Value?": [check_v(p1, bk1), check_v(px, bkx), check_v(p2, bk2)]
-})
+        st.write(f"🟢 **OVER**: {o_p:.1%} (k: {1/o_p:.
