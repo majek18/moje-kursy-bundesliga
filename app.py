@@ -10,6 +10,7 @@ import google.generativeai as genai
 st.set_page_config(page_title="Football Predictor Pro", layout="wide")
 
 # --- KONFIGURACJA AI ---
+# Pobieranie klucza z Streamlit Secrets
 api_key = st.secrets.get("GEMINI_API_KEY")
 
 # --- DANE BAZOWE: BUNDESLIGA ---
@@ -46,7 +47,7 @@ def load_premier_league():
         'T_GA': [0.73, 0.93, 1.37, 1.17, 1.17, 1.34, 1.37, 1.13, 1.58, 1.48, 1.13, 1.48, 1.20, 1.24, 1.65, 1.58, 1.48, 1.86, 2.00, 1.73],
         'HxG_F': [2.05, 2.23, 2.13, 1.36, 2.14, 1.90, 2.07, 1.36, 1.63, 1.39, 1.17, 2.19, 1.94, 1.41, 1.76, 1.24, 1.54, 1.39, 1.03, 1.14],
         'HxG_A': [0.74, 1.07, 1.01, 1.32, 1.54, 1.06, 1.31, 1.44, 0.75, 1.35, 1.46, 1.45, 1.51, 1.31, 1.32, 1.58, 1.59, 1.66, 1.88, 1.73],
-        'TxG_F': [1.96, 2.01, 1.91, 1.34, 2.12, 1.86, 1.76, 1.30, 1.71, 1.26, 1.00, 1.63, 1.67, 1.45, 1.51, 1.18, 1.20, 1.29, 0.94, 0.93],
+        'TxG_F': [1.96, 2.01, 1.91, 1.34, 2.12, 1.86, 1.76, 1.30, 1.71, 1.26, 1.00, 1.63, 1.67, 1.45, 1.51, 1.18, 1.18, 1.29, 0.94, 0.93],
         'TxG_A': [0.79, 1.19, 1.27, 1.54, 1.47, 1.27, 1.47, 1.51, 1.45, 1.58, 1.61, 1.37, 1.50, 1.47, 1.54, 1.55, 1.72, 1.84, 2.16, 1.74],
         'A_GF': [1.62, 1.64, 1.60, 1.28, 2.00, 1.46, 1.33, 1.14, 1.64, 1.14, 0.53, 1.00, 1.26, 1.14, 1.00, 1.50, 1.00, 1.20, 1.13, 0.35],
         'A_GA': [0.81, 1.14, 1.60, 1.35, 1.20, 1.53, 1.66, 1.00, 2.21, 1.78, 1.40, 1.35, 1.13, 1.42, 2.00, 1.50, 1.60, 1.80, 2.33, 1.50],
@@ -102,29 +103,27 @@ def render_league_ui(df, league_name):
         h_team = st.selectbox(f"Gospodarz", df['Team'], index=0, key=f"h_{league_name}")
         h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
-        with st.expander("🛠️ Modyfikatory Gospodarza"):
+        with st.expander("🛠️ Modyfikatory"):
             mod_range = list(range(-20, 21))
             m_key = st.session_state.mod_reset
             h_k = st.select_slider("KONTUZJE", options=mod_range, value=0, key=f"h_k_{league_name}_{m_key}")
             h_f = st.select_slider("FORMA", options=mod_range, value=0, key=f"h_f_{league_name}_{m_key}")
-            h_s = st.select_slider("STYL GRY", options=mod_range, value=0, key=f"h_s_{league_name}_{m_key}")
-            h_p = st.select_slider("POGODA", options=mod_range, value=0, key=f"h_p_{league_name}_{m_key}")
-            h_total_mod = (h_k + h_f + h_s + h_p) / 100
-            st.button("🧹 Resetuj", key=f"reset_h_{league_name}", on_click=reset_mods, use_container_width=True)
+            h_s = st.select_slider("STYL", options=mod_range, value=0, key=f"h_s_{league_name}_{m_key}")
+            h_total_mod = (h_k + h_f + h_s) / 100
+            st.button("🧹 Reset", key=f"reset_h_{league_name}", on_click=reset_mods, use_container_width=True)
 
     with col_b:
         a_team = st.selectbox(f"Gość", df['Team'], index=1, key=f"a_{league_name}")
         a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
-        with st.expander("🛠️ Modyfikatory Gościa"):
+        with st.expander("🛠️ Modyfikatory"):
             mod_range = list(range(-20, 21))
             m_key = st.session_state.mod_reset
-            a_k = st.select_slider("KONTUZJE", options=mod_range, value=0, key=f"a_k_{league_name}_{m_key}")
-            a_f = st.select_slider("FORMA", options=mod_range, value=0, key=f"a_f_{league_name}_{m_key}")
-            a_s = st.select_slider("STYL GRY", options=mod_range, value=0, key=f"a_s_{league_name}_{m_key}")
-            a_p = st.select_slider("POGODA", options=mod_range, value=0, key=f"a_p_{league_name}_{m_key}")
-            a_total_mod = (a_k + a_f + a_s + a_p) / 100
-            st.button("🧹 Resetuj", key=f"reset_a_{league_name}", on_click=reset_mods, use_container_width=True)
+            a_k = st.select_slider("KONTUZJE ", options=mod_range, value=0, key=f"a_k_{league_name}_{m_key}")
+            a_f = st.select_slider("FORMA ", options=mod_range, value=0, key=f"a_f_{league_name}_{m_key}")
+            a_s = st.select_slider("STYL ", options=mod_range, value=0, key=f"a_s_{league_name}_{m_key}")
+            a_total_mod = (a_k + a_f + a_s) / 100
+            st.button("🧹 Reset ", key=f"reset_a_{league_name}", on_click=reset_mods, use_container_width=True)
 
     h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
 
@@ -136,10 +135,10 @@ def render_league_ui(df, league_name):
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 
-    lambda_f = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod)
-    mu_f = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod)
+    lambda_f = max(0.01, (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod))
+    mu_f = max(0.01, (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod))
 
-    max_g = 12
+    max_g = 10
     matrix = np.zeros((max_g, max_g))
     for x in range(max_g):
         for y in range(max_g):
@@ -155,15 +154,17 @@ def render_league_ui(df, league_name):
     c2.metric("Remis", f"{px:.1%}")
     c3.metric(f"Wygrana {a_team}", f"{p2:.1%}")
 
+    # --- SEKCOJA AI ---
     st.divider()
-    st.markdown("### 🤖 AI Analiza Meczu")
-
+    st.subheader("🤖 AI Analyst")
     if api_key:
         try:
-            # KONFIGURACJA BEZ UKRYTYCH ZNAKÓW
-            genai.configure(api_key=api_key)
-            # Używamy pełnej nazwy modelu z prefiksem models/
-            chat_model = genai.GenerativeModel(model_name="models/gemini-1.5-flash")
+            # CZYSZCZENIE KLUCZA I KONFIGURACJA
+            genai.configure(api_key=api_key.strip())
+            
+            # CZYSZCZENIE NAZWY MODELU Z UNICODE
+            model_id = "".join(c for c in "gemini-1.5-flash" if ord(c) < 128)
+            chat_model = genai.GenerativeModel(model_id)
             
             if f"msg_{league_name}" not in st.session_state:
                 st.session_state[f"msg_{league_name}"] = []
@@ -172,27 +173,22 @@ def render_league_ui(df, league_name):
                 with st.chat_message(message["role"]):
                     st.markdown(message["content"])
 
-            if prompt := st.chat_input("Zapytaj AI o ten mecz...", key=f"input_{league_name}"):
+            if prompt := st.chat_input("Zapytaj o mecz...", key=f"in_{league_name}"):
                 st.session_state[f"msg_{league_name}"].append({"role": "user", "content": prompt})
-                with st.chat_message("user"):
-                    st.markdown(prompt)
+                with st.chat_message("user"): st.markdown(prompt)
 
                 with st.chat_message("assistant"):
-                    context = f"""Analizujesz mecz: {h_team} vs {a_team}. 
-                    Obliczone ExG: {h_team} {lambda_f:.2f}, {a_team} {mu_f:.2f}.
-                    Szanse: Wygrana {h_team} {p1:.1%}, Remis {px:.1%}, Wygrana {a_team} {p2:.1%}.
-                    Użytkownik pyta: {prompt}"""
-                    
+                    ctx = f"Mecz: {h_team} vs {a_team}. Szanse: {p1:.1%}/{px:.1%}/{p2:.1%}. ExG: {lambda_f:.2f}-{mu_f:.2f}. {prompt}"
                     try:
-                        response = chat_model.generate_content(context)
-                        st.markdown(response.text)
-                        st.session_state[f"msg_{league_name}"].append({"role": "assistant", "content": response.text})
+                        res = chat_model.generate_content(ctx)
+                        st.markdown(res.text)
+                        st.session_state[f"msg_{league_name}"].append({"role": "assistant", "content": res.text})
                     except Exception as e:
-                        st.error(f"Błąd AI: {str(e)}")
+                        st.error(f"Błąd modelu: {e}")
         except Exception as e:
-            st.error(f"Błąd konfiguracji: {str(e)}")
+            st.error(f"Błąd konfiguracji: {e}")
     else:
-        st.warning("Dodaj GEMINI_API_KEY w ustawieniach Secrets.")
+        st.info("Brak klucza API w Secrets.")
 
 with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
 with tab_pl: render_league_ui(load_premier_league(), "Premier League")
