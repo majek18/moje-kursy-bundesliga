@@ -10,7 +10,7 @@ import google.generativeai as genai
 st.set_page_config(page_title="Football Predictor Pro", layout="wide")
 
 # --- KONFIGURACJA AI (GEMINI) ---
-gemini_key = st.secrets.get("GEMINI_API_KEY")
+gemini_key = st.secret.get("GEMINI_API_KEY")
 if gemini_key:
     genai.configure(api_key=gemini_key)
     model = genai.GenerativeModel('gemini-1.5-flash')
