@@ -37,9 +37,7 @@ avg_a_gf = df['A_GF'].mean()
 # --- SIDEBAR: WAGI ---
 st.sidebar.header("⚖️ Konfiguracja Wag")
 
-# Domyślne wagi zgodne z opisem: 40, 25, 20, 15
 D_W = [40, 25, 20, 15]
-# Opcje wyboru: 0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 60...
 options = [i for i in range(0, 105, 5)]
 
 if 'w_xg_dv' not in st.session_state: st.session_state.w_xg_dv = D_W[0]
@@ -81,7 +79,6 @@ with c2:
 # --- OBLICZENIA POISSONA ---
 h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
 
-# Logika wag: xG D/W (w0), Gole D/W (w1), xG All (w2), Gole All (w3)
 lambda_h_raw = (h['HxG_F']*w_xg_dv + h['H_GF']*w_g_dv + h['TxG_F']*w_xg_all + h['T_GF']*w_g_all)
 mu_h_raw = (h['HxG_A']*w_xg_dv + h['H_GA']*w_g_dv + h['TxG_A']*w_xg_all + h['T_GA']*w_g_all)
 lambda_a_raw = (a['AxG_F']*w_xg_dv + a['A_GF']*w_g_dv + a['TxG_F']*w_xg_all + a['T_GF']*w_g_all)
@@ -93,12 +90,11 @@ a_atk_s, a_def_s = (lambda_a_raw / avg_a_gf), (mu_a_raw / avg_h_gf)
 lambda_final = h_atk_s * a_def_s * avg_h_gf
 mu_final = a_atk_s * h_def_s * avg_a_gf
 
-# Macierz wyników
-max_goals = 10
+max_goals = 12 # Zwiększony bufor dla obliczeń
 matrix = np.outer(poisson.pmf(range(max_goals), lambda_final), poisson.pmf(range(max_goals), mu_final))
 p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
 
-# --- NOWA SEKCJA: DUŻE PROCENTY I KURSY ---
+# --- PROGNOZA ---
 st.divider()
 st.subheader("🎯 Prognoza Wyniku Końcowego")
 m1, mx, m2 = st.columns(3)
@@ -120,9 +116,8 @@ st.markdown(f"""
 | **{a_team}** | {fmt_s(a_atk_s)} | {fmt_s(a_def_s, True)} | **{mu_final:.2f}** |
 """)
 
-# --- TABELA VALUE BET ---
+# --- VALUE BET ---
 st.write("### 🏦 Kalkulator Value Bet")
-st.caption("Wpisz kursy bukmachera, aby sprawdzić, czy model widzi okazję.")
 ci1, ci2, ci3 = st.columns(3)
 with ci1: bk1 = st.text_input(f"Kurs na {h_team}", placeholder="np. 1.85")
 with ci2: bkx = st.text_input("Kurs na X", placeholder="np. 3.40")
@@ -142,9 +137,23 @@ value_data = {
 }
 st.table(value_data)
 
-with st.expander("Analityczna macierz prawdopodobieństwa (Heatmap)"):
+# --- ZIELONA MACIERZY DO 7 GOLI ---
+with st.expander("⚽ Analityczna macierz prawdopodobieństwa (Wyniki 0-7)"):
+    # Zakres 0-7 to pierwsze 8 indeksów (0,1,2,3,4,5,6,7)
+    limit = 8
+    m_plot = matrix[:limit, :limit]
     
-    fig, ax = plt.subplots(figsize=(10, 4))
-    sns.heatmap(matrix[:6, :6], annot=True, fmt=".1%", cmap="YlGnBu", cbar=False)
-    plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
+    fig, ax = plt.subplots(figsize=(12, 7))
+    # Paleta YlGn: Yellow -> Green
+    sns.heatmap(m_plot, annot=True, fmt=".1%", cmap="YlGn", cbar=False, 
+                linewidths=0.5, linecolor='white',
+                xticklabels=range(limit), yticklabels=range(limit))
+    
+    plt.title(f"Prawdopodobieństwo Dokładnego Wyniku (0-7 goli)", pad=20)
+    plt.xlabel(f"Gole {a_team}", fontsize=10)
+    plt.ylabel(f"Gole {h_team}", fontsize=10)
+    
+    # Estetyka osi
+    plt.tick_params(axis='both', which='major', labelsize=10)
+    
     st.pyplot(fig)
