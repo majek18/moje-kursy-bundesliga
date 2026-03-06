@@ -56,7 +56,7 @@ def load_premier_league():
     }
     return pd.DataFrame(data)
 
-# --- FUNKCJA KOREKTY DIXON-COLES ---
+# --- FUNKCJE POMOCNICZE ---
 def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 0 and y == 0: return 1 - (l_h * m_a * rho)
     if x == 0 and y == 1: return 1 + (l_h * rho)
@@ -151,59 +151,19 @@ def render_league_ui(df, league_name):
 
     st.divider()
     c1, c2, c3 = st.columns(3)
-    c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/max(p1, 0.001):.2f}")
-    c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/max(px, 0.001):.2f}")
-    c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/max(p2, 0.001):.2f}")
-
-    st.markdown("#### ⚽ Przewidywana liczba goli (ExG)")
-    ex_h, ex_a = st.columns(2)
-    ex_h.metric(f"ExG {h_team}", f"{lambda_f:.2f}")
-    ex_a.metric(f"ExG {a_team}", f"{mu_f:.2f}")
+    c1.metric(f"Wygrana {h_team}", f"{p1:.1%}")
+    c2.metric("Remis", f"{px:.1%}")
+    c3.metric(f"Wygrana {a_team}", f"{p2:.1%}")
 
     st.divider()
-    st.markdown("### 📊 Porównanie Siły Zespołów")
-    def format_strength(val, is_attack=True):
-        pct = (val - 1.0) * 100
-        color = "green" if (is_attack and val >= 1) or (not is_attack and val <= 1) else "red"
-        return f":{color}[{val:.2f} ({pct:+.0f}%)]"
+    st.markdown("### 🤖 AI Analiza Meczu")
 
-    st.markdown(f"""
-    | Cecha | {h_team} (Gospodarz) | {a_team} (Gość) |
-    | :--- | :--- | :--- |
-    | **Siła Ataku** | {format_strength(h_atk_s, True)} | {format_strength(a_atk_s, True)} |
-    | **Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |
-    | **Łączny Modyfikator** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |
-    """)
-
-    with st.expander("📊 Macierz Prawdopodobieństwa"):
-        limit = 8
-        fig, ax = plt.subplots(figsize=(10, 5))
-        sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
-        plt.xlabel(f"Gole {a_team}") 
-        plt.ylabel(f"Gole {h_team}") 
-        st.pyplot(fig)
-
-    st.divider()
-    st.subheader("📉 Analiza Under / Over")
-    lines = [1.5, 2.5, 3.5, 4.5]
-    ou_cols = st.columns(len(lines))
-    for i, line in enumerate(lines):
-        prob_under = sum(matrix[x, y] for x in range(max_g) for y in range(max_g) if x + y < line)
-        prob_over = 1 - prob_under
-        with ou_cols[i]:
-            st.markdown(f"**Linia {line}**")
-            st.write(f"🟢 **OVER**: {prob_over:.1%}")
-            st.write(f"🔴 **UNDER**: {prob_under:.1%}")
-
-    # --- SEKCOJA CZATU AI ---
-    st.divider()
-    st.subheader("🤖 AI Match Analyst")
-    
     if api_key:
         try:
+            # KONFIGURACJA BEZ UKRYTYCH ZNAKÓW
             genai.configure(api_key=api_key)
-            # ZMIANA: Wymuszamy gemini-pro dla maksymalnej kompatybilności
-            chat_model = genai.GenerativeModel('gemini-pro')
+            # Używamy pełnej nazwy modelu z prefiksem models/
+            chat_model = genai.GenerativeModel(model_name="models/gemini-1.5-flash")
             
             if f"msg_{league_name}" not in st.session_state:
                 st.session_state[f"msg_{league_name}"] = []
@@ -218,21 +178,21 @@ def render_league_ui(df, league_name):
                     st.markdown(prompt)
 
                 with st.chat_message("assistant"):
-                    context = f"""Jesteś analitykiem meczu {h_team} vs {a_team}. 
-                    ExG: {h_team} ({lambda_f:.2f}), {a_team} ({mu_f:.2f}).
-                    Szanse: {p1:.1%} / {px:.1%} / {p2:.1%}.
-                    Odpowiedz na: {prompt}"""
+                    context = f"""Analizujesz mecz: {h_team} vs {a_team}. 
+                    Obliczone ExG: {h_team} {lambda_f:.2f}, {a_team} {mu_f:.2f}.
+                    Szanse: Wygrana {h_team} {p1:.1%}, Remis {px:.1%}, Wygrana {a_team} {p2:.1%}.
+                    Użytkownik pyta: {prompt}"""
                     
                     try:
                         response = chat_model.generate_content(context)
                         st.markdown(response.text)
                         st.session_state[f"msg_{league_name}"].append({"role": "assistant", "content": response.text})
                     except Exception as e:
-                        st.error(f"AI napotkało błąd. Upewnij się, że klucz API w Secrets nazywa się GEMINI_API_KEY. Szczegóły: {str(e)}")
+                        st.error(f"Błąd AI: {str(e)}")
         except Exception as e:
             st.error(f"Błąd konfiguracji: {str(e)}")
     else:
-        st.warning("Podłącz GEMINI_API_KEY w Secrets.")
+        st.warning("Dodaj GEMINI_API_KEY w ustawieniach Secrets.")
 
 with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
 with tab_pl: render_league_ui(load_premier_league(), "Premier League")
