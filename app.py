@@ -5,9 +5,9 @@ from scipy.stats import poisson
 import seaborn as sns
 import matplotlib.pyplot as plt
 
-st.set_page_config(page_title="Bundesliga Predictor Pro", layout="wide")
+st.set_page_config(page_title="Bundesliga Predictor Pro (Dixon-Coles)", layout="wide")
 
-# --- DANE STATYCZNE (Gwarancja braku błędów scrapowania) ---
+# --- DANE BAZOWE ---
 @st.cache_data
 def load_data():
     data = {
@@ -33,6 +33,7 @@ def load_data():
 df = load_data()
 avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
 
+# --- FUNKCJA DIXONA-COLESA ---
 def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 0 and y == 0: return 1 - (l_h * m_a * rho)
     if x == 0 and y == 1: return 1 + (l_h * rho)
@@ -40,122 +41,125 @@ def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 1 and y == 1: return 1 - rho
     return 1
 
-def get_prediction(h_team, a_team, w0, w1, w2, w3, rho):
-    h = df[df['Team'] == h_team].iloc[0]
-    a = df[df['Team'] == a_team].iloc[0]
-    
-    l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3)
-    m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3)
-    l_a_r = (a['AxG_F']*w0 + a['A_GF']*w1 + a['TxG_F']*w2 + a['T_GF']*w3)
-    m_a_r = (a['AxG_A']*w0 + a['A_GA']*w1 + a['TxG_A']*w2 + a['T_GA']*w3)
-    
-    h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
-    a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
-    
-    lambda_f = h_atk_s * a_def_s * avg_h_gf
-    mu_f = a_atk_s * h_def_s * avg_a_gf
-    
-    matrix = np.zeros((12, 12))
-    for x in range(12):
-        for y in range(12):
-            p = poisson.pmf(x, lambda_f) * poisson.pmf(y, mu_f)
-            matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_f, mu_f, rho)
-    matrix /= matrix.sum()
-    
-    p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
-    return p1, px, p2, lambda_f, mu_f, h_atk_s, h_def_s, a_atk_s, a_def_s, matrix
-
-# --- SIDEBAR ---
+# --- SIDEBAR: KONFIGURACJA ---
 st.sidebar.header("⚙️ Konfiguracja")
-rho_val = st.sidebar.slider("Dixon-Coles (rho)", 0.0, 0.3, 0.1, 0.01)
+rho = st.sidebar.slider("Parametr Dixon-Coles (rho)", 0.0, 0.3, 0.1, 0.01)
 
-if 'reset_count' not in st.session_state: st.session_state.reset_count = 0
-if st.sidebar.button("🔄 Resetuj wagi (45/30/15/10)"): st.session_state.reset_count += 1
+if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
+def reset_weights(): st.session_state.reset_counter += 1
 
-opts = [i for i in range(0, 105, 5)]
-w0_v = st.sidebar.selectbox("🎯 xG Sezon D/W %", opts, index=opts.index(45), key=f"w0_{st.session_state.reset_count}")
-w1_v = st.sidebar.selectbox("⚽ Gole Sezon D/W %", opts, index=opts.index(30), key=f"w1_{st.session_state.reset_count}")
-w2_v = st.sidebar.selectbox("📊 xG Cały Sezon %", opts, index=opts.index(15), key=f"w2_{st.session_state.reset_count}")
-w3_v = st.sidebar.selectbox("📉 Gole Cały Sezon %", opts, index=opts.index(10), key=f"w3_{st.session_state.reset_count}")
+st.sidebar.button("🔄 Resetuj wagi (40/25/20/15)", on_click=reset_weights)
 
-total = w0_v + w1_v + w2_v + w3_v
-st.sidebar.markdown(f"### Suma: :{'green' if total==100 else 'red'}[{total}%]")
-if total != 100: st.stop()
+options = [i for i in range(0, 105, 5)]
+v0 = st.sidebar.selectbox("🎯 xG Sezon D/W %", options, index=options.index(40), key=f"w0_{st.session_state.reset_counter}")
+v1 = st.sidebar.selectbox("⚽ Gole Sezon D/W %", options, index=options.index(25), key=f"w1_{st.session_state.reset_counter}")
+v2 = st.sidebar.selectbox("📊 xG Cały Sezon %", options, index=options.index(20), key=f"w2_{st.session_state.reset_counter}")
+v3 = st.sidebar.selectbox("📉 Gole Cały Sezon %", options, index=options.index(15), key=f"w3_{st.session_state.reset_counter}")
 
-# --- WIDOK ---
-st.title("⚽ Bundesliga Predictor Pro")
-c_h, c_a = st.columns(2)
-with c_h: h_sel = st.selectbox("Gospodarz", df['Team'], index=1)
-with c_a: a_sel = st.selectbox("Gość", df['Team'], index=12)
+total_pct = v0 + v1 + v2 + v3
+color = "green" if total_pct == 100 else "red"
+st.sidebar.markdown(f"### Suma: :{color}[{total_pct}%]")
+if total_pct != 100: st.sidebar.error("Suma wag musi wynosić 100%!"); st.stop()
 
-p1, px, p2, lf, mf, has, hds, aas, ads, mtx = get_prediction(h_sel, a_sel, w0_v/100, w1_v/100, w2_v/100, w3_v/100, rho_val)
+# --- LOGIKA OBLICZEŃ ---
+w0, w1, w2, w3 = v0/100, v1/100, v2/100, v3/100
 
-st.divider()
-m1, mx, m2 = st.columns(3)
-m1.metric(f"{h_sel}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
-mx.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
-m2.metric(f"{a_sel}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
+st.title("⚽ Bundesliga Predictor Pro (Dixon-Coles)")
+col_a, col_b = st.columns(2)
+with col_a:
+    h_team = st.selectbox("Gospodarz", df['Team'], index=0)
+    h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
+    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
+with col_b:
+    a_team = st.selectbox("Gość", df['Team'], index=1)
+    a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
+    st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
 
-# Strength
-st.write("### 📊 Współczynniki Siły")
-def fmt(v, d=False):
-    c = "green" if (v<1 if d else v>1) else "red"
-    return f":{c}[{v:.2f} ({v-1:+.0%})]"
-st.markdown(f"| Drużyna | Atak | Obrona | Gole Exp. |\n| :--- | :--- | :--- | :--- |\n| **{h_sel}** | {fmt(has)} | {fmt(hds,True)} | **{lf:.2f}** |\n| **{a_sel}** | {fmt(aas)} | {fmt(ads,True)} | **{mf:.2f}** |")
+h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
+
+l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3)
+m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3)
+l_a_r = (a['AxG_F']*w0 + a['A_GF']*w1 + a['TxG_F']*w2 + a['T_GF']*w3)
+m_a_r = (a['AxG_A']*w0 + a['A_GA']*w1 + a['TxG_A']*w2 + a['T_GA']*w3)
+
+h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
+a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
+
+lambda_f = h_atk_s * a_def_s * avg_h_gf
+mu_f = a_atk_s * h_def_s * avg_a_gf
 
 # Macierz
-st.write("### ⚽ Macierz Prawdopodobieństwa")
-fig, ax = plt.subplots(figsize=(10, 4))
-sns.heatmap(mtx[:8, :8], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
-plt.xlabel(f"Gole {a_sel}"); plt.ylabel(f"Gole {h_sel}")
+max_g = 12
+matrix = np.zeros((max_g, max_g))
+for x in range(max_g):
+    for y in range(max_g):
+        p = poisson.pmf(x, lambda_f) * poisson.pmf(y, mu_f)
+        matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_f, mu_f, rho)
+matrix /= matrix.sum()
+
+p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
+
+# --- WIDOK: 1X2 ---
+st.divider()
+c1, c2, c3 = st.columns(3)
+c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
+c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
+c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
+
+# --- PRZYWRÓCONA TABELA WSPÓŁCZYNNIKÓW ---
+st.write("### 📊 Współczynniki Siły Drużyn")
+def fmt_s(val, is_def=False):
+    diff = (val - 1)
+    color = "green" if (diff < 0 if is_def else diff > 0) else "red"
+    return f":{color}[{val:.2f} ({diff:+.0%})]"
+
+st.markdown(f"""
+| Drużyna | Atak (Strength) | Obrona (Strength) | Prognozowane Gole |
+| :--- | :--- | :--- | :--- |
+| **{h_team}** | {fmt_s(h_atk_s)} | {fmt_s(h_def_s, True)} | **{lambda_f:.2f}** |
+| **{a_team}** | {fmt_s(a_atk_s)} | {fmt_s(a_def_s, True)} | **{mu_f:.2f}** |
+""")
+
+# --- MACIERZ ---
+st.write("### ⚽ Macierz Prawdopodobieństwa (0-7 goli)")
+
+limit = 8
+fig, ax = plt.subplots(figsize=(10, 5))
+sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
+plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
 st.pyplot(fig)
 
-# Kalkulator
+# --- UNDER/OVER ---
+st.divider()
+st.subheader("📉 Analiza Under / Over")
+lines = [1.5, 2.5, 3.5, 4.5]
+ou_cols = st.columns(len(lines))
+for i, line in enumerate(lines):
+    u_p = sum(matrix[x, y] for x in range(max_g) for y in range(max_g) if x + y < line)
+    o_p = 1 - u_p
+    with ou_cols[i]:
+        st.markdown(f"**Linia {line}**")
+        st.write(f"🟢 **OVER**: {o_p:.1%} (k: {1/o_p:.2f})")
+        st.write(f"🔴 **UNDER**: {u_p:.1%} (k: {1/u_p:.2f})")
+        st.progress(o_p)
+
+# --- KALKULATOR VALUE ---
 st.divider()
 st.write("### 🏦 Kalkulator Value Bet")
-vk1, vkx, vk2 = st.columns(3)
-with vk1: b1 = st.text_input(f"Kurs {h_sel}", "2.00")
-with vkx: bx = st.text_input("Kurs X", "3.40")
-with vk2: b2 = st.text_input(f"Kurs {a_sel}", "4.00")
+v1, v2, v3 = st.columns(3)
+with v1: bk1 = st.text_input(f"Kurs {h_team}", "2.00")
+with v2: bkx = st.text_input("Kurs X", "3.40")
+with v3: bk2 = st.text_input(f"Kurs {a_team}", "4.00")
 
-def check(prob, bk):
+def check_v(prob, bk):
     try:
         k = float(bk.replace(',', '.'))
         return f"✅ TAK ({k:.2f})" if k > (1/prob) else f"❌ NIE ({k:.2f})"
     except: return "-"
 
-st.table({"Typ": ["1", "X", "2"], "Model (%)": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"], "Kurs Fair": [f"{1/p1:.2f}", f"{1/px:.2f}", f"{1/p2:.2f}"], "Value?": [check(p1, b1), check(px, bx), check(p2, b2)]})
-
-# --- TERMINARZ (Naprawiony błąd line 158) ---
-st.divider()
-st.subheader("📅 Terminarz i Kursy Fair")
-matches = [
-    ("Borussia Dortmund", "FC Cologne"), ("RB Leipzig", "Bayern Munich"),
-    ("Union Berlin", "Augsburg"), ("Bayer Leverkusen", "Mainz 05"),
-    ("Eintracht Frankfurt", "Hoffenheim"), ("St. Pauli", "Wolfsburg"),
-    ("VfB Stuttgart", "Werder Bremen"), ("FC Heidenheim", "Freiburg"),
-    ("Borussia M.Gladbach", "Hamburger SV")
-]
-
-sched_list = []
-for ht, at in matches:
-    # Używamy bezpośrednio wartości z widgetów sidebarowych
-    tp1, tpx, tp2, _, _, _, _, _, _, _ = get_prediction(ht, at, w0_v/100, w1_v/100, w2_v/100, w3_v/100, rho_val)
-    sched_list.append({
-        "Mecz": f"{ht} [{1/tp1:.2f}] - {at} [{1/tp2:.2f}]",
-        "Remis [X]": f"{1/tpx:.2f}"
-    })
-
-st.table(pd.DataFrame(sched_list))
-
-# Under/Over
-st.divider()
-st.subheader("📉 Under / Over")
-ou_cols = st.columns(4)
-for i, line in enumerate([1.5, 2.5, 3.5, 4.5]):
-    u_p = sum(mtx[x, y] for x in range(12) for y in range(12) if x+y < line)
-    with ou_cols[i]:
-        st.write(f"**Linia {line}**")
-        st.write(f"🟢 O: {1-u_p:.1%} (k: {1/(1-u_p):.2f})")
-        st.write(f"🔴 U: {u_p:.1%} (k: {1/u_p:.2f})")
-        st.progress(1-u_p)
+st.table({
+    "Typ": ["1", "X", "2"],
+    "Model (%)": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"],
+    "Kurs Fair": [f"{1/p1:.2f}", f"{1/px:.2f}", f"{1/p2:.2f}"],
+    "Value?": [check_v(p1, bk1), check_v(px, bkx), check_v(p2, bk2)]
+})
