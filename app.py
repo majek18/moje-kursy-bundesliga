@@ -10,7 +10,7 @@ import json
 
 st.set_page_config(page_title="Bundesliga Predictor LIVE", layout="wide")
 
-# --- MAPOWANIE LOGOTYPÓW (Understat Name -> Transfermarkt ID) ---
+# --- MAPOWANIE LOGOTYPÓW (Nazwa Understat -> ID Transfermarkt) ---
 logo_map = {
     'Bayern Munich': 27, 'Borussia Dortmund': 16, 'Bayer Leverkusen': 15,
     'RB Leipzig': 23826, 'Eintracht Frankfurt': 24, 'Stuttgart': 79,
@@ -20,7 +20,7 @@ logo_map = {
     'St. Pauli': 35, 'Hamburger SV': 41, 'Holstein Kiel': 1297, 'Bochum': 80
 }
 
-# --- FUNKCJA POBIERANIA DANYCH Z UNDERSTAT ---
+# --- FUNKCJA SCRAPUJĄCA (Naprawiona konwersja typów) ---
 @st.cache_data(ttl=3600)
 def get_live_data():
     url = "https://understat.com/league/Bundesliga"
@@ -35,10 +35,7 @@ def get_live_data():
             data_script = s.text
             break
             
-    if not data_script:
-        raise ValueError("Nie znaleziono danych na stronie Understat.")
-
-    # Wycinanie JSONa ze skryptu JS
+    # Wyciąganie JSONa
     start_ind = data_script.find("('") + 2
     end_ind = data_script.find("')")
     json_data = data_script[start_ind:end_ind].encode('utf8').decode('unicode_escape')
@@ -50,10 +47,12 @@ def get_live_data():
         team_name = t_info['title']
         history = t_info['history']
         
-        # Konwersja na floaty, bo Understat trzyma to jako stringi
+        # KLUCZOWA POPRAWKA: Konwersja tekstów na liczby (float)
         for m in history:
-            for key in ['scored', 'missed', 'xG', 'xGA']:
-                m[key] = float(m[key])
+            m['scored'] = float(m['scored'])
+            m['missed'] = float(m['missed'])
+            m['xG'] = float(m['xG'])
+            m['xGA'] = float(m['xGA'])
         
         h_games = [m for m in history if m['h_a'] == 'h']
         a_games = [m for m in history if m['h_a'] == 'a']
@@ -75,76 +74,66 @@ def get_live_data():
         })
     return pd.DataFrame(teams).sort_values('Team')
 
-# --- INICJALIZACJA DANYCH ---
+# --- ŁADOWANIE ---
 try:
     df = get_live_data()
-    st.sidebar.success("🟢 Połączono z Understat (Dane LIVE)")
+    st.sidebar.success("🟢 Dane LIVE pobrane pomyślnie")
 except Exception as e:
-    st.sidebar.error(f"🔴 Błąd scrapowania: {e}")
+    st.sidebar.error(f"🔴 Błąd: {e}")
     st.stop()
 
-# --- SIDEBAR: KONFIGURACJA WAG ---
+# --- SIDEBAR WAGI ---
 st.sidebar.header("⚖️ Konfiguracja Wag")
-D_W = [40, 25, 20, 15] # Twoje domyślne wagi
+D_W = [40, 25, 20, 15]
 options = list(range(0, 105, 5))
 
-# Klucze do session_state
-keys = ['w_xg_dv', 'w_g_dv', 'w_xg_all', 'w_g_all']
-for i, k in enumerate(keys):
-    if k not in st.session_state:
-        st.session_state[k] = D_W[i]
+for i, k in enumerate(['w0', 'w1', 'w2', 'w3']):
+    if k not in st.session_state: st.session_state[k] = D_W[i]
 
-if st.sidebar.button("🔄 Resetuj do: 40/25/20/15"):
-    for i, k in enumerate(keys): st.session_state[k] = D_W[i]
+if st.sidebar.button("🔄 Resetuj wagi"):
+    st.session_state.w0, st.session_state.w1, st.session_state.w2, st.session_state.w3 = D_W
     st.rerun()
 
-v0 = st.sidebar.selectbox("🎯 xG Sezon (dom/wyjazd) %", options, index=options.index(st.session_state.w_xg_dv), key='w_xg_dv')
-v1 = st.sidebar.selectbox("⚽ Gole Sezon (dom/wyjazd) %", options, index=options.index(st.session_state.w_g_dv), key='w_g_dv')
-v2 = st.sidebar.selectbox("📊 xG Sezon (cały) %", options, index=options.index(st.session_state.w_xg_all), key='w_xg_all')
-v3 = st.sidebar.selectbox("📉 Gole Sezon (cały) %", options, index=options.index(st.session_state.w_g_all), key='w_g_all')
+v0 = st.sidebar.selectbox("🎯 xG Sezon (dom/wyjazd) %", options, index=options.index(st.session_state.w0))
+v1 = st.sidebar.selectbox("⚽ Gole Sezon (dom/wyjazd) %", options, index=options.index(st.session_state.w1))
+v2 = st.sidebar.selectbox("📊 xG Sezon (cały) %", options, index=options.index(st.session_state.w2))
+v3 = st.sidebar.selectbox("📉 Gole Sezon (cały) %", options, index=options.index(st.session_state.w3))
 
-# Walidacja sumy
-w_total = v0 + v1 + v2 + v3
-if w_total != 100:
-    st.sidebar.error(f"Suma wag wynosi {w_total}%. Musi być 100%!")
+if (v0+v1+v2+v3) != 100:
+    st.sidebar.error("Suma wag musi być 100%!")
     st.stop()
 
 # --- WYBÓR MECZU ---
-st.title("⚽ Bundesliga Predictor LIVE")
-avg_h_gf = df['H_GF'].mean()
-avg_a_gf = df['A_GF'].mean()
+st.title("⚽ Bundesliga Live Predictor")
+avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
 
-col1, col2 = st.columns(2)
-with col1:
+c1, c2 = st.columns(2)
+with c1:
     h_team = st.selectbox("Gospodarz", df['Team'], index=0)
     st.image(f"https://tmssl.akamaized.net/images/wappen/head/{logo_map.get(h_team, 0)}.png", width=100)
-with col2:
+with c2:
     a_team = st.selectbox("Gość", df['Team'], index=min(1, len(df)-1))
     st.image(f"https://tmssl.akamaized.net/images/wappen/head/{logo_map.get(a_team, 0)}.png", width=100)
 
-# --- OBLICZENIA SIŁY (STRENGTH) ---
-h = df[df['Team'] == h_team].iloc[0]
-a = df[df['Team'] == a_team].iloc[0]
-
-# Wagi ułamkowe
+# --- OBLICZENIA POISSONA ---
+h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
 w0, w1, w2, w3 = v0/100, v1/100, v2/100, v3/100
 
-# Obliczanie parametrów ataku i obrony na podstawie Twoich wag
+# Parametry ataku/obrony
 h_atk = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3) / avg_h_gf
 h_def = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3) / avg_a_gf
 a_atk = (a['AxG_F']*w0 + a['A_GF']*w1 + a['TxG_F']*w2 + a['T_GF']*w3) / avg_a_gf
 a_def = (a['AxG_A']*w0 + a['A_GA']*w1 + a['TxG_A']*w2 + a['T_GA']*w3) / avg_h_gf
 
-# Średnia liczba goli (Lambda i Mu)
+# Średnie gole w meczu
 l_h = h_atk * a_def * avg_h_gf
 l_a = a_atk * h_def * avg_a_gf
 
-# Generowanie macierzy prawdopodobieństwa
-max_g = 10
-matrix = np.outer(poisson.pmf(range(max_g), l_h), poisson.pmf(range(max_g), l_a))
+# Macierz
+matrix = np.outer(poisson.pmf(range(10), l_h), poisson.pmf(range(10), l_a))
 p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
 
-# --- SEKCA: DUŻE PROCENTY ---
+# --- WIDOK WYNIKÓW ---
 st.divider()
 st.subheader("🎯 Prognozowane Szanse")
 m1, mx, m2 = st.columns(3)
@@ -152,33 +141,29 @@ m1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
 mx.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
 m2.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
 
-# --- TABELA VALUE BET ---
-st.write("### 🏦 Kalkulator Value")
-c_v1, c_v2, c_v3 = st.columns(3)
-with c_v1: b1 = st.text_input(f"Kurs {h_team}", "2.10")
-with c_v2: bx = st.text_input("Kurs X", "3.60")
-with c_v3: b2 = st.text_input(f"Kurs {a_team}", "4.20")
+st.write("### 🏦 Kalkulator Value Bet")
+cv1, cv2, cv3 = st.columns(3)
+with cv1: b1 = st.text_input(f"Kurs {h_team}", "2.00")
+with cv2: bx = st.text_input("Kurs X", "3.50")
+with cv3: b2 = st.text_input(f"Kurs {a_team}", "4.00")
 
-def check_value(prob, book_odds):
+def get_v(prob, bk):
     try:
-        bo = float(book_odds.replace(',', '.'))
-        fair = 1/prob
-        return f"✅ TAK ({bo:.2f})" if bo > fair else f"❌ NIE ({bo:.2f})"
+        k = float(bk.replace(',', '.'))
+        return f"✅ TAK ({k:.2f})" if k > (1/prob) else f"❌ NIE ({k:.2f})"
     except: return "-"
 
 st.table(pd.DataFrame({
     "Typ": ["1", "X", "2"],
     "Model %": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"],
     "Kurs Fair": [f"{1/p1:.2f}", f"{1/px:.2f}", f"{1/p2:.2f}"],
-    "Value?": [check_value(p1, b1), check_value(px, bx), check_value(p2, b2)]
+    "Value?": [get_v(p1, b1), get_v(px, bx), get_v(p2, b2)]
 }))
 
-# --- MACIERZ WYNIKÓW (ZIELONA) ---
-with st.expander("⚽ Rozkład prawdopodobieństwa wyników (0-6 goli)"):
+with st.expander("⚽ Macierz Prawdopodobieństwa (0-6 goli)"):
     
     limit = 7
     fig, ax = plt.subplots(figsize=(10, 6))
-    sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False, linewidths=1)
-    plt.xlabel(f"Gole {a_team}")
-    plt.ylabel(f"Gole {h_team}")
+    sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
+    plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
     st.pyplot(fig)
