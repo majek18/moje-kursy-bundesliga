@@ -42,7 +42,7 @@ def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 1 and y == 1: return 1 - rho
     return 1
 
-# --- SIDEBAR: KONFIGURACJA ---
+# --- SIDEBAR ---
 st.sidebar.header("⚙️ Konfiguracja")
 rho = st.sidebar.slider("Parametr Dixon-Coles (rho)", 0.0, 0.3, 0.1, 0.01)
 
@@ -50,7 +50,6 @@ if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 def reset_weights(): st.session_state.reset_counter += 1
 
 st.sidebar.button("🔄 Resetuj wagi (40/25/20/15)", on_click=reset_weights)
-
 options = [i for i in range(0, 105, 5)]
 v0 = st.sidebar.selectbox("🎯 xG Sezon D/W %", options, index=options.index(40), key=f"w0_{st.session_state.reset_counter}")
 v1 = st.sidebar.selectbox("⚽ Gole Sezon D/W %", options, index=options.index(25), key=f"w1_{st.session_state.reset_counter}")
@@ -60,14 +59,10 @@ v3 = st.sidebar.selectbox("📉 Gole Cały Sezon %", options, index=options.inde
 total_pct = v0 + v1 + v2 + v3
 color = "green" if total_pct == 100 else "red"
 st.sidebar.markdown(f"### Suma: :{color}[{total_pct}%]")
+if total_pct != 100: st.sidebar.error("Suma wag musi wynosić 100%!"); st.stop()
 
-if total_pct != 100: 
-    st.sidebar.error("Suma wag musi wynosić 100%!")
-    st.stop()
-
-# --- LOGIKA OBLICZEŃ ---
+# --- LOGIKA ---
 w0, w1, w2, w3 = v0/100, v1/100, v2/100, v3/100
-
 st.title("⚽ Bundesliga Predictor Pro (Dixon-Coles)")
 
 col_a, col_b = st.columns(2)
@@ -80,55 +75,42 @@ with col_b:
     a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
     st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
 
-# Pobranie danych drużyn
-h = df[df['Team'] == h_team].iloc[0]
-a = df[df['Team'] == a_team].iloc[0]
+h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
 
-# 1. Średnie ważone (Raw values)
 l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3)
 m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3)
 l_a_r = (a['AxG_F']*w0 + a['A_GF']*w1 + a['TxG_F']*w2 + a['T_GF']*w3)
 m_a_r = (a['AxG_A']*w0 + a['A_GA']*w1 + a['TxG_A']*w2 + a['T_GA']*w3)
 
-# 2. Współczynniki siły (Strengths)
 h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
 a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 
-# 3. Finalne parametry Poisson (Lambda i Mu)
 lambda_f = h_atk_s * a_def_s * avg_h_gf
 mu_f = a_atk_s * h_def_s * avg_a_gf
 
-# --- MODUŁ: ŚCIEŻKA OBLICZENIOWA (Twoja prośba) ---
+# --- STEP BY STEP ---
 with st.expander("🧮 Ścieżka Obliczeniowa (Jak powstał wynik?)"):
-    st.subheader("Krok 1: Średnie ważone goli i xG")
-    st.write("Łączymy formę domową/wyjazdową z formą z całego sezonu wg Twoich wag.")
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown(f"**{h_team} (Atak)**")
-        st.latex(rf"L_{{h}} = {l_h_r:.2f}")
-        st.markdown(f"**{h_team} (Obrona)**")
-        st.latex(rf"M_{{h}} = {m_h_r:.2f}")
-    with c2:
-        st.markdown(f"**{a_team} (Atak)**")
-        st.latex(rf"L_{{a}} = {l_a_r:.2f}")
-        st.markdown(f"**{a_team} (Obrona)**")
-        st.latex(rf"M_{{a}} = {m_a_r:.2f}")
+    st.subheader("Krok 1: Średnie ważone i Siła")
+    st.latex(rf"\text{{Siła Ataku }} {h_team} = {h_atk_s:.2f} \quad | \quad \text{{Siła Obrony }} {a_team} = {a_def_s:.2f}")
+    st.latex(rf"\lambda (Gospodarz) = {h_atk_s:.2f} \cdot {a_def_s:.2f} \cdot {avg_h_gf:.2f} = \mathbf{{{lambda_f:.2f}}}")
+    st.latex(rf"\mu (Gość) = {a_atk_s:.2f} \cdot {h_def_s:.2f} \cdot {avg_a_gf:.2f} = \mathbf{{{mu_f:.2f}}}")
 
-    st.subheader("Krok 2: Współczynniki siły (Strength)")
-    st.write(f"Porównujemy wyniki do średniej ligowej (Dom: {avg_h_gf:.2f}, Wyjazd: {avg_a_gf:.2f})")
-    s1, s2 = st.columns(2)
-    with s1:
-        st.info(f"Atak {h_team}: {l_h_r:.2f} / {avg_h_gf:.2f} = **{h_atk_s:.2f}**")
-        st.info(f"Obrona {h_team}: {m_h_r:.2f} / {avg_a_gf:.2f} = **{h_def_s:.2f}**")
-    with s2:
-        st.info(f"Atak {a_team}: {l_a_r:.2f} / {avg_a_gf:.2f} = **{a_atk_s:.2f}**")
-        st.info(f"Obrona {a_team}: {m_a_r:.2f} / {avg_h_gf:.2f} = **{a_def_s:.2f}**")
+    st.subheader("Krok 2: Rozkład Poissona (Możliwe gole)")
+    st.write("Wykorzystujemy wzór na prawdopodobieństwo uzyskania dokładnie $k$ goli:")
+    st.latex(r"P(X=k) = \frac{\lambda^k e^{-\lambda}}{k!}")
+    
+    goals_range = range(6)
+    h_probs = [poisson.pmf(k, lambda_f) for k in goals_range]
+    a_probs = [poisson.pmf(k, mu_f) for k in goals_range]
+    
+    prob_df = pd.DataFrame({
+        "Gole": goals_range,
+        f"{h_team} (%)": [f"{p:.2%}" for p in h_probs],
+        f"{a_team} (%)": [f"{p:.2%}" for p in a_probs]
+    }).set_index("Gole")
+    st.table(prob_df.T)
 
-    st.subheader("Krok 3: Finalna prognoza goli (λ i μ)")
-    st.latex(rf"\lambda_{{gosp}} = {h_atk_s:.2f} \cdot {a_def_s:.2f} \cdot {avg_h_gf:.2f} = \mathbf{{{lambda_f:.2f}}}")
-    st.latex(rf"\mu_{{gość}} = {a_atk_s:.2f} \cdot {h_def_s:.2f} \cdot {avg_a_gf:.2f} = \mathbf{{{mu_f:.2f}}}")
-
-# --- MACIERZ I WYNIK ---
+# --- MACIERZ I OBLICZENIA KOŃCOWE ---
 max_g = 12
 matrix = np.zeros((max_g, max_g))
 for x in range(max_g):
@@ -139,28 +121,14 @@ matrix /= matrix.sum()
 
 p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
 
-# --- WIDOK: 1X2 ---
+# --- WIDOK 1X2 ---
 st.divider()
 c1, c2, c3 = st.columns(3)
 c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
 c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
 c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
 
-# --- TABELA WSPÓŁCZYNNIKÓW ---
-st.write("### 📊 Współczynniki Siły Drużyn")
-def fmt_s(val, is_def=False):
-    diff = (val - 1)
-    color = "green" if (diff < 0 if is_def else diff > 0) else "red"
-    return f":{color}[{val:.2f} ({diff:+.0%})]"
-
-st.markdown(f"""
-| Drużyna | Atak (Strength) | Obrona (Strength) | Prognozowane Gole |
-| :--- | :--- | :--- | :--- |
-| **{h_team}** | {fmt_s(h_atk_s)} | {fmt_s(h_def_s, True)} | **{lambda_f:.2f}** |
-| **{a_team}** | {fmt_s(a_atk_s)} | {fmt_s(a_def_s, True)} | **{mu_f:.2f}** |
-""")
-
-# --- MACIERZ ---
+# --- MACIERZ GRAFICZNA ---
 st.write("### ⚽ Macierz Prawdopodobieństwa (0-7 goli)")
 limit = 8
 fig, ax = plt.subplots(figsize=(10, 5))
@@ -168,7 +136,7 @@ sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=Fal
 plt.xlabel(f"Gole {a_team}"); plt.ylabel(f"Gole {h_team}")
 st.pyplot(fig)
 
-# --- UNDER/OVER ---
+# --- ANALIZA U/O ---
 st.divider()
 st.subheader("📉 Analiza Under / Over")
 lines = [1.5, 2.5, 3.5, 4.5]
@@ -182,7 +150,7 @@ for i, line in enumerate(lines):
         st.write(f"🔴 **UNDER**: {u_p:.1%} (k: {1/u_p:.2f})")
         st.progress(o_p)
 
-# --- KALKULATOR VALUE ---
+# --- VALUE BET ---
 st.divider()
 st.write("### 🏦 Kalkulator Value Bet")
 v1, v2, v3 = st.columns(3)
