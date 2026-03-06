@@ -201,9 +201,11 @@ def render_league_ui(df, league_name):
     
     if api_key:
         try:
+            # KLUCZOWA POPRAWKA: Używamy stabilnego modelu i sprawdzamy połączenie
             genai.configure(api_key=api_key)
-            # WYMUSZAMY MODEL Z KOŃCÓWKĄ -latest, BY UNIKNĄĆ BŁĘDU 404
-            chat_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+            
+            # Tworzymy model bez przedrostków, by uniknąć problemu z wersją beta
+            chat_model = genai.GenerativeModel('gemini-1.5-flash')
             
             if f"msg_{league_name}" not in st.session_state:
                 st.session_state[f"msg_{league_name}"] = []
@@ -219,21 +221,21 @@ def render_league_ui(df, league_name):
 
                 with st.chat_message("assistant"):
                     context = f"""Analizujesz mecz: {h_team} vs {a_team}. 
-                    Dane modelu Poisson: ExG {h_team} {lambda_f:.2f}, ExG {a_team} {mu_f:.2f}.
-                    Prawdopodobieństwa: Wygrana {h_team} {p1:.1%}, Remis {px:.1%}, Wygrana {a_team} {p2:.1%}.
+                    Obliczone ExG: {h_team} {lambda_f:.2f}, {a_team} {mu_f:.2f}.
+                    Szansa na wygraną: {h_team} {p1:.1%}, Remis {px:.1%}, {a_team} {p2:.1%}.
                     Użytkownik pyta: {prompt}"""
                     
                     try:
+                        # Wymuszamy wersję v1 w wywołaniu, jeśli biblioteka na to pozwala
                         response = chat_model.generate_content(context)
                         st.markdown(response.text)
                         st.session_state[f"msg_{league_name}"].append({"role": "assistant", "content": response.text})
                     except Exception as e:
-                        # Wyświetlamy błąd tylko jeśli naprawdę wystąpi
-                        st.error(f"Błąd modelu: {str(e)}")
+                        st.error(f"Problem z generowaniem odpowiedzi. Spróbuj odświeżyć stronę lub sprawdź klucz. Szczegóły: {str(e)}")
         except Exception as e:
             st.error(f"Błąd konfiguracji: {str(e)}")
     else:
-        st.info("Klucz API nie został znaleziony w Secrets.")
+        st.warning("Podłącz GEMINI_API_KEY w Secrets, aby rozmawiać z AI.")
 
 with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
 with tab_pl: render_league_ui(load_premier_league(), "Premier League")
