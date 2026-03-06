@@ -6,7 +6,7 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 
 # --- KONFIGURACJA STRONY ---
-st.set_page_config(page_title="Bundesliga Predictor Pro (Dixon-Coles)", layout="wide")
+st.set_page_config(page_title="Bundesliga Predictor Pro (Raw Poisson)", layout="wide")
 
 # --- DANE BAZOWE ---
 @st.cache_data
@@ -34,17 +34,8 @@ def load_data():
 df = load_data()
 avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
 
-# --- FUNKCJA DIXONA-COLESA ---
-def dixon_coles_adjustment(x, y, l_h, m_a, rho):
-    if x == 0 and y == 0: return 1 - (l_h * m_a * rho)
-    if x == 0 and y == 1: return 1 + (l_h * rho)
-    if x == 1 and y == 0: return 1 + (m_a * rho)
-    if x == 1 and y == 1: return 1 - rho
-    return 1
-
 # --- SIDEBAR: KONFIGURACJA ---
 st.sidebar.header("⚙️ Konfiguracja")
-rho = st.sidebar.slider("Parametr Dixon-Coles (rho)", 0.0, 0.3, 0.1, 0.01)
 
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 def reset_weights(): st.session_state.reset_counter += 1
@@ -68,7 +59,7 @@ if total_pct != 100:
 # --- LOGIKA OBLICZEŃ ---
 w0, w1, w2, w3 = v0/100, v1/100, v2/100, v3/100
 
-st.title("⚽ Bundesliga Predictor Pro (Dixon-Coles)")
+st.title("⚽ Bundesliga Predictor Pro (Raw Poisson)")
 
 col_a, col_b = st.columns(2)
 with col_a:
@@ -98,10 +89,9 @@ a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 lambda_f = h_atk_s * a_def_s * avg_h_gf
 mu_f = a_atk_s * h_def_s * avg_a_gf
 
-# --- MODUŁ: ŚCIEŻKA OBLICZENIOWA (Twoja prośba) ---
+# --- MODUŁ: ŚCIEŻKA OBLICZENIOWA ---
 with st.expander("🧮 Ścieżka Obliczeniowa (Jak powstał wynik?)"):
     st.subheader("Krok 1: Średnie ważone goli i xG")
-    st.write("Łączymy formę domową/wyjazdową z formą z całego sezonu wg Twoich wag.")
     c1, c2 = st.columns(2)
     with c1:
         st.markdown(f"**{h_team} (Atak)**")
@@ -115,7 +105,6 @@ with st.expander("🧮 Ścieżka Obliczeniowa (Jak powstał wynik?)"):
         st.latex(rf"M_{{a}} = {m_a_r:.2f}")
 
     st.subheader("Krok 2: Współczynniki siły (Strength)")
-    st.write(f"Porównujemy wyniki do średniej ligowej (Dom: {avg_h_gf:.2f}, Wyjazd: {avg_a_gf:.2f})")
     s1, s2 = st.columns(2)
     with s1:
         st.info(f"Atak {h_team}: {l_h_r:.2f} / {avg_h_gf:.2f} = **{h_atk_s:.2f}**")
@@ -130,14 +119,14 @@ with st.expander("🧮 Ścieżka Obliczeniowa (Jak powstał wynik?)"):
 
 # --- MACIERZ I WYNIK ---
 max_g = 12
-matrix = np.zeros((max_g, max_g))
-for x in range(max_g):
-    for y in range(max_g):
-        p = poisson.pmf(x, lambda_f) * poisson.pmf(y, mu_f)
-        matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_f, mu_f, rho)
-matrix /= matrix.sum()
+# Czysty rozkład Poissona bez korekty Dixon-Coles
+x_probs = poisson.pmf(np.arange(max_g), lambda_f)
+y_probs = poisson.pmf(np.arange(max_g), mu_f)
+matrix = np.outer(x_probs, y_probs)
 
-p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
+p1 = np.sum(np.tril(matrix, -1))
+px = np.sum(np.diag(matrix))
+p2 = np.sum(np.triu(matrix, 1))
 
 # --- WIDOK: 1X2 ---
 st.divider()
