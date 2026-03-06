@@ -52,7 +52,7 @@ def load_premier_league():
     }
     return pd.DataFrame(data)
 
-# --- FUNKCJA KOREKTY DIXON-COLES ---
+# --- FUNKCJA KOREKTY ---
 def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 0 and y == 0: return 1 - (l_h * m_a * rho)
     if x == 0 and y == 1: return 1 + (l_h * rho)
@@ -60,7 +60,7 @@ def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 1 and y == 1: return 1 - rho
     return 1
 
-# --- SIDEBAR: KONFIGURACJA WAG ---
+# --- SIDEBAR ---
 st.sidebar.header("⚙️ Konfiguracja Wag")
 if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
 def reset_weights(): st.session_state.reset_counter += 1
@@ -80,29 +80,26 @@ if total_pct != 100:
 w0, w1, w2, w3 = v0/100, v1/100, v2/100, v3/100
 fixed_rho = -0.15
 
-# --- LOGIKA UI LIGI ---
+# --- INTERFEJS ---
+tab_bl, tab_pl = st.tabs(["🇩🇪 Bundesliga", "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League"])
+
 def render_league_ui(df, league_name):
     avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
     
-    st.markdown(f"<h1 style='text-align: center;'>⚽ {league_name} Predictor</h1>", unsafe_allow_html=True)
+    st.title(f"⚽ {league_name} Predictor")
     
-    # Wybór drużyn i herby
-    col_a, col_spacer, col_b = st.columns([4, 1, 4])
+    col_a, col_b = st.columns(2)
     with col_a:
         h_team = st.selectbox(f"Gospodarz", df['Team'], index=0, key=f"h_{league_name}")
         h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
-        st.markdown(f"<div style='text-align: center'><img src='https://tmssl.akamaized.net/images/wappen/head/{h_id}.png' width='110'></div>", unsafe_allow_html=True)
-    
-    with col_spacer:
-        st.markdown("<h2 style='text-align: center; padding-top: 50px;'>VS</h2>", unsafe_allow_html=True)
-
+        st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
     with col_b:
         a_team = st.selectbox(f"Gość", df['Team'], index=1, key=f"a_{league_name}")
         a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
-        st.markdown(f"<div style='text-align: center'><img src='https://tmssl.akamaized.net/images/wappen/head/{a_id}.png' width='110'></div>", unsafe_allow_html=True)
+        st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
 
-    # Obliczenia parametrów
     h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
+
     l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3)
     m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3)
     l_a_r = (a['AxG_F']*w0 + a['A_GF']*w1 + a['TxG_F']*w2 + a['T_GF']*w3)
@@ -110,10 +107,11 @@ def render_league_ui(df, league_name):
 
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
+
     lambda_f = h_atk_s * a_def_s * avg_h_gf
     mu_f = a_atk_s * h_def_s * avg_a_gf
 
-    # Macierz Poissona
+    # Obliczenia macierzy
     max_g = 12
     matrix = np.zeros((max_g, max_g))
     for x in range(max_g):
@@ -121,95 +119,111 @@ def render_league_ui(df, league_name):
             p = poisson.pmf(x, lambda_f) * poisson.pmf(y, mu_f)
             matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_f, mu_f, fixed_rho)
     matrix /= matrix.sum()
+
     p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
 
-    # 1. SZANSE PROCENTOWE I KURSY
+    # --- 1. SZANSE I KURSY ---
     st.divider()
     c1, c2, c3 = st.columns(3)
-    with c1:
-        st.container(border=True).metric(f"🏠 {h_team}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
-    with c2:
-        st.container(border=True).metric("🤝 Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
-    with c3:
-        st.container(border=True).metric(f"🚀 {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
+    c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {1/p1:.2f}")
+    c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/px:.2f}")
+    c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/p2:.2f}")
 
-    # 2. TABELA PORÓWNANIA SIŁY
-    st.markdown("### 📊 Porównanie Potencjału")
-    def get_badge(val, reverse=False):
-        if (not reverse and val >= 1.1) or (reverse and val <= 0.9): return "🟢 **MOCNY**"
-        if (not reverse and val <= 0.9) or (reverse and val >= 1.1): return "🔴 **SŁABY**"
-        return "🟡 **ŚREDNI**"
+    # --- 2. TABELA SIŁY ---
+    st.divider()
+    st.markdown("### 📊 Porównanie Siły Zespołów")
+    
+    def format_strength(val, is_attack=True):
+        pct = (val - 1.0) * 100
+        color = "green" if (is_attack and val >= 1) or (not is_attack and val <= 1) else "red"
+        return f":{color}[{val:.2f} ({pct:+.0f}%)]"
 
     st.markdown(f"""
-    | Statystyka | {h_team} | {a_team} |
-    | :--- | :---: | :---: |
-    | **Atak (Skuteczność)** | {h_atk_s:.2f} ({get_badge(h_atk_s)}) | {a_atk_s:.2f} ({get_badge(a_atk_s)}) |
-    | **Obrona (Stabilność)** | {h_def_s:.2f} ({get_badge(h_def_s, True)}) | {a_def_s:.2f} ({get_badge(a_def_s, True)}) |
+    | Cecha | {h_team} (Gospodarz) | {a_team} (Gość) |
+    | :--- | :--- | :--- |
+    | **Siła Ataku** | {format_strength(h_atk_s, True)} | {format_strength(a_atk_s, True)} |
+    | **Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |
     """)
 
-    # 3. ŚCIEŻKA OBLICZENIOWA
-    with st.expander("🧮 Szczegółowa Ścieżka Matematyczna"):
-        st.write(f"Średnie ligowe: Gospodarze `{avg_h_gf:.3f}` | Goście `{avg_a_gf:.3f}`")
+    # --- 3. ŚCIEŻKA OBLICZENIOWA ---
+    with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
+        st.subheader("1. Średnie ligowe (Benchmark)")
+        st.write(f"Średnia goli gospodarzy: `{avg_h_gf:.3f}` | Średnia goli gości: `{avg_a_gf:.3f}`")
+        
         sc1, sc2 = st.columns(2)
         with sc1:
             st.markdown(f"**{h_team}**")
-            st.write(f"Atak: `{l_h_r:.3f}/{avg_h_gf:.3f} = {h_atk_s:.3f}`")
-            st.write(f"Obrona: `{m_h_r:.3f}/{avg_a_gf:.3f} = {h_def_s:.3f}`")
+            st.write(f"🎯 **Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
+            st.write(f"🛡️ **Siła Obrony:** `{m_h_r:.3f} / {avg_a_gf:.3f} = {h_def_s:.3f}`")
         with sc2:
             st.markdown(f"**{a_team}**")
-            st.write(f"Atak: `{l_a_r:.3f}/{avg_a_gf:.3f} = {a_atk_s:.3f}`")
-            st.write(f"Obrona: `{m_a_r:.3f}/{avg_h_gf:.3f} = {a_def_s:.3f}`")
+            st.write(f"🎯 **Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
+            st.write(f"🛡️ **Siła Obrony:** `{m_a_r:.3f} / {avg_h_gf:.3f} = {a_def_s:.3f}`")
+            
+        st.subheader("2. Parametry Poisson")
         st.latex(rf"\lambda = {lambda_f:.3f}, \quad \mu = {mu_f:.3f}")
 
-    # 4. MACIERZ PRAWDOPODOBIEŃSTWA
-    with st.expander("📊 Macierz Wyników (Dokładne Prawdopodobieństwo)"):
-        fig, ax = plt.subplots(figsize=(8, 4))
-        sns.heatmap(matrix[:7, :7], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
-        plt.xlabel(f"Gole {a_team}")
-        plt.ylabel(f"Gole {h_team}")
+    # --- 4. MACIERZ ---
+    with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
+        limit = 8
+        fig, ax = plt.subplots(figsize=(10, 5))
+        sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
+        plt.xlabel(f"Gole {a_team} (Gość)") 
+        plt.ylabel(f"Gole {h_team} (Gospodarz)") 
         st.pyplot(fig)
 
-    # 5. RYNEK GOLI I BTTS
-    st.markdown("### 🎯 Przewidywania Rynkowe")
-    m1, m2 = st.columns(2)
-    with m1:
-        with st.container(border=True):
-            st.write("**Linia 2.5 Gola**")
-            p_over25 = 1 - sum(matrix[x, y] for x in range(max_g) for y in range(max_g) if x + y < 2.5)
-            st.write(f"🟢 **OVER**: {p_over25:.1%} (k: {1/p_over25:.2f})")
-            st.write(f"🔴 **UNDER**: {1-p_over25:.1%} (k: {1/(1-p_over25):.2f})")
-    with m2:
-        with st.container(border=True):
-            st.write("**BTTS (Obie strzelą)**")
-            p_btts = sum(matrix[x, y] for x in range(1, max_g) for y in range(1, max_g))
-            st.write(f"✅ **TAK**: {p_btts:.1%} (k: {1/p_btts:.2f})")
-            st.write(f"❌ **NIE**: {1-p_btts:.1%} (k: {1/(1-p_btts):.2f})")
-
-    # 6. SYMULACJA MONTE CARLO
+    # --- 5. ANALIZA UNDER / OVER ---
     st.divider()
-    if st.button(f"🎲 SYMULUJ MECZ (10 000 prób)", use_container_width=True, key=f"sim_btn_{league_name}"):
+    st.subheader("📉 Analiza Under / Over")
+    lines = [1.5, 2.5, 3.5, 4.5]
+    ou_cols = st.columns(len(lines))
+    for i, line in enumerate(lines):
+        prob_under = sum(matrix[x, y] for x in range(max_g) for y in range(max_g) if x + y < line)
+        prob_over = 1 - prob_under
+        with ou_cols[i]:
+            st.markdown(f"**Linia {line}**")
+            st.write(f"🟢 **OVER**: {prob_over:.1%} (k: {1/prob_over:.2f})")
+            st.write(f"🔴 **UNDER**: {prob_under:.1%} (k: {1/prob_under:.2f})")
+
+    # --- 6. ANALIZA BTTS ---
+    st.divider()
+    st.subheader("🥅 Obie Drużyny Strzelą (BTTS)")
+    prob_btts_yes = sum(matrix[x, y] for x in range(1, max_g) for y in range(1, max_g))
+    prob_btts_no = 1 - prob_btts_yes
+    
+    b1, b2 = st.columns(2)
+    with b1:
+        st.markdown("**BTTS: TAK**")
+        st.write(f"🟢 **Szanse**: {prob_btts_yes:.1%} (k: {1/prob_btts_yes:.2f})")
+    with b2:
+        st.markdown("**BTTS: NIE**")
+        st.write(f"🔴 **Szanse**: {prob_btts_no:.1%} (k: {1/prob_btts_no:.2f})")
+
+    # --- 7. NOWA SYMULACJA MONTE CARLO (MODUŁ DODANY) ---
+    st.divider()
+    if st.button(f"🎲 SYMULUJ MECZ (10 000 prób)", use_container_width=True, key=f"sim_{league_name}"):
         with st.status("Trwa symulowanie spotkania...", expanded=True) as status:
             n_sim = 10000
             sim_h = np.random.poisson(lambda_f, n_sim)
             sim_a = np.random.poisson(mu_f, n_sim)
             
-            res = pd.DataFrame({'H': sim_h, 'A': sim_a})
-            res['Score'] = res['H'].astype(str) + ":" + res['A'].astype(str)
-            most_common = res['Score'].value_counts().idxmax()
+            res_df = pd.DataFrame({'H': sim_h, 'A': sim_a})
+            res_df['Score'] = res_df['H'].astype(str) + ":" + res_df['A'].astype(str)
+            most_common = res_df['Score'].value_counts().idxmax()
             
             st.success(f"🏆 Najczęstszy wynik w symulacji: **{most_common}**")
             
-            fig2, ax2 = plt.subplots(figsize=(10, 3.5))
+            # Wykres gęstości goli (KDE)
+            fig2, ax2 = plt.subplots(figsize=(10, 4))
             sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=2)
             sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=2)
             plt.title("Gęstość prawdopodobieństwa goli")
-            plt.xlabel("Gole")
+            plt.xlabel("Liczba goli")
+            plt.ylabel("Gęstość")
             plt.legend()
             st.pyplot(fig2)
-            status.update(label="Symulacja zakończona!", state="complete")
-
-# --- URUCHOMIENIE APLIKACJI ---
-tab_bl, tab_pl = st.tabs(["🇩🇪 Bundesliga", "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League"])
+            
+            status.update(label="Symulacja zakończona!", state="complete", expanded=True)
 
 with tab_bl:
     render_league_ui(load_bundesliga(), "Bundesliga")
