@@ -4,4 +4,4 @@ numpy
 scipy
 seaborn
 matplotlib
-google-generativeai
+huggingface_hub
