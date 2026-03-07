@@ -282,45 +282,62 @@ def render_league_ui(df, league_name):
                 st.write(f"🥅 BTTS: TAK: **{((sim_h > 0) & (sim_a > 0)).sum():,}**")
             status.update(label="Analiza zakończona!", state="complete")
 
+    # =================================================================
+    # --- SEKCJA CHATBOTA HUGGING FACE (Z KONTEKSTEM OBLICZEŃ) ---
+    # =================================================================
+    st.markdown("<br><hr><h2 style='text-align: center;'>💬 Ekspert AI: Analiza Wyników</h2>", unsafe_allow_html=True)
+
+    if "HF_TOKEN" in st.secrets:
+        client = InferenceClient(api_key=st.secrets["HF_TOKEN"])
+        
+        # Przygotowanie kontekstu dla bota na podstawie Twoich obliczeń
+        current_context = f"""
+        MECZ: {h_team} vs {a_team}
+        WYNIKI MODELU:
+        - Szansa na wygraną {h_team}: {p1:.1%}
+        - Szansa na remis: {px:.1%}
+        - Szansa na wygraną {a_team}: {p2:.1%}
+        - Przewidywane gole (ExG) {h_team}: {lambda_f:.2f}
+        - Przewidywane gole (ExG) {a_team}: {mu_f:.2f}
+        - Modyfikatory (kontuzje/forma): {h_team} ({h_total_mod:+.0%}), {a_team} ({a_total_mod:+.0%})
+        - Średnie ligowe: Gospodarze {avg_h_gf:.2f}, Goście {avg_a_gf:.2f}
+        """
+
+        if f"messages_{league_name}" not in st.session_state:
+            st.session_state[f"messages_{league_name}"] = []
+
+        for message in st.session_state[f"messages_{league_name}"]:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
+        if prompt := st.chat_input("Zadaj pytanie o tę analizę...", key=f"chat_input_{league_name}"):
+            st.session_state[f"messages_{league_name}"].append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
+            with st.chat_message("assistant"):
+                placeholder = st.empty()
+                placeholder.markdown("🔍 *Analizuję dane z modelu...*")
+                try:
+                    response = client.chat.completions.create(
+                        model="meta-llama/Meta-Llama-3-8B-Instruct",
+                        messages=[
+                            {
+                                "role": "system", 
+                                "content": f"Jesteś ekspertem statystyki piłkarskiej. Analizujesz konkretny mecz na podstawie dostarczonych liczb: {current_context}. Odpowiadaj rzeczowo, po polsku, wskazując na konkretne prawdopodobieństwa z modelu."
+                            },
+                            {"role": "user", "content": prompt}
+                        ],
+                        max_tokens=500
+                    )
+                    full_response = response.choices[0].message.content
+                    placeholder.markdown(full_response)
+                    st.session_state[f"messages_{league_name}"].append({"role": "assistant", "content": full_response})
+                except Exception as e:
+                    st.error(f"Błąd AI: {str(e)}")
+    else:
+        st.info("💡 Dodaj `HF_TOKEN` do Secrets, aby rozmawiać z ekspertem AI o tych wynikach.")
+
 # Wywołanie UI piłkarskiego
 with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
 with tab_pl: render_league_ui(load_premier_league(), "Premier League")
-
-# --- SEKCJA CHATBOTA HUGGING FACE ---
-st.markdown("<br><hr><h2 style='text-align: center;'>💬 Ekspert Piłkarski AI</h2>", unsafe_allow_html=True)
-
-if "HF_TOKEN" in st.secrets:
-    client = InferenceClient(api_key=st.secrets["HF_TOKEN"])
-    
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    if prompt := st.chat_input("Zadaj pytanie o statystyki lub poproś o analizę..."):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
-
-        with st.chat_message("assistant"):
-            placeholder = st.empty()
-            placeholder.markdown("🔍 *Analizuję dane...*")
-            try:
-                # Używamy modelu Llama-3-8B-Instruct
-                response = client.chat.completions.create(
-                    model="meta-llama/Meta-Llama-3-8B-Instruct",
-                    messages=[
-                        {"role": "system", "content": "Jesteś ekspertem od analizy statystycznej meczów piłkarskich. Pomagasz użytkownikowi zrozumieć wyniki modelu Poissona i xG. Odpowiadaj konkretnie i po polsku."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    max_tokens=500
-                )
-                full_response = response.choices[0].message.content
-                placeholder.markdown(full_response)
-                st.session_state.messages.append({"role": "assistant", "content": full_response})
-            except Exception as e:
-                st.error(f"Błąd AI: {str(e)}")
-else:
-    st.info("💡 Skonfiguruj `HF_TOKEN` w Secrets, aby odblokować czat z ekspertem AI.")
