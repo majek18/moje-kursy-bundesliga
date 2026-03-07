@@ -4,11 +4,9 @@ import numpy as np
 from scipy.stats import poisson
 import seaborn as sns
 import matplotlib.pyplot as plt
-import google.generativeai as genai
-import time  # Dodane do obsługi przerw między zapytaniami
 
 # --- KONFIGURACJA STRONY ---
-st.set_page_config(page_title="Football Predictor & AI Chat", layout="wide", page_icon="⚽")
+st.set_page_config(page_title="Football Predictor", layout="wide", page_icon="⚽")
 
 # --- DANE BAZOWE: BUNDESLIGA ---
 @st.cache_data
@@ -62,15 +60,17 @@ def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 1 and y == 1: return 1 - rho
     return 1
 
-# --- SESSION STATE ---
-if 'mod_reset' not in st.session_state: st.session_state.mod_reset = 0
-if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
+# --- SESSION STATE DLA MODYFIKATORÓW ---
+if 'mod_reset' not in st.session_state:
+    st.session_state.mod_reset = 0
 
-def reset_mods(): st.session_state.mod_reset += 1
-def reset_weights(): st.session_state.reset_counter += 1
+def reset_mods():
+    st.session_state.mod_reset += 1
 
 # --- SIDEBAR PIŁKARSKI ---
 st.sidebar.header("⚙️ Konfiguracja Wag")
+if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
+def reset_weights(): st.session_state.reset_counter += 1
 st.sidebar.button("🔄 Resetuj wagi", on_click=reset_weights)
 
 options = [i for i in range(0, 105, 5)]
@@ -149,67 +149,138 @@ def render_league_ui(df, league_name):
     c2.metric("Remis", f"{px:.1%}", f"Kurs: {1/max(px, 0.001):.2f}")
     c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {1/max(p2, 0.001):.2f}")
 
-    # Statystyki i reszta UI (pominięte dla zwięzłości, zostają bez zmian...)
-    st.markdown(f"**ExG: {lambda_f:.2f} - {mu_f:.2f}**")
+    st.markdown("#### ⚽ Przewidywana liczba goli (ExG)")
+    ex_h, ex_a = st.columns(2)
+    ex_h.metric(f"ExG {h_team}", f"{lambda_f:.2f}")
+    ex_a.metric(f"ExG {a_team}", f"{mu_f:.2f}")
 
-# Wywołanie UI
+    st.divider()
+    st.subheader("📊 Porównanie statystyk ze średnią ligową")
+    
+    def color_stat(val, avg, is_defense=False):
+        if not is_defense:
+            color = "#28a745" if val >= avg else "#dc3545"
+        else:
+            color = "#28a745" if val <= avg else "#dc3545"
+        return f'background-color: {color}; color: white; font-weight: bold'
+
+    def create_stat_styled_table(team_data, context, full_df):
+        if context == "Cały sezon":
+            gf, ga, xgf, xga = team_data['T_GF'], team_data['T_GA'], team_data['TxG_F'], team_data['TxG_A']
+            l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['T_GF'].mean(), full_df['T_GA'].mean(), full_df['TxG_F'].mean(), full_df['TxG_A'].mean()
+        elif context == "Dom":
+            gf, ga, xgf, xga = team_data['H_GF'], team_data['H_GA'], team_data['HxG_F'], team_data['HxG_A']
+            l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['H_GF'].mean(), full_df['H_GA'].mean(), full_df['HxG_F'].mean(), full_df['HxG_A'].mean()
+        else:
+            gf, ga, xgf, xga = team_data['A_GF'], team_data['A_GA'], team_data['AxG_F'], team_data['AxG_A']
+            l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['A_GF'].mean(), full_df['A_GA'].mean(), full_df['AxG_F'].mean(), full_df['AxG_A'].mean()
+
+        df_stats = pd.DataFrame({
+            "Statystyka": ["Gole Strzelone", "Gole Stracone", "xG (Atak)", "xG (Obrona)"],
+            "Drużyna": [gf, ga, xgf, xga],
+            "Średnia ligi": [l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga]
+        })
+        def apply_styling(row):
+            is_def = "Stracone" in row["Statystyka"] or "Obrona" in row["Statystyka"]
+            style = color_stat(row["Drużyna"], row["Średnia ligi"], is_def)
+            return [None, style, None]
+        return df_stats.style.apply(apply_styling, axis=1).format("{:.2f}", subset=["Drużyna", "Średnia ligi"])
+
+    col_stats_h, col_stats_a = st.columns(2)
+    with col_stats_h:
+        st.markdown(f"**Zakres dla {h_team}**")
+        ctx_h = st.radio("Wybierz:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_h_{league_name}")
+        st.table(create_stat_styled_table(h, ctx_h, df))
+    with col_stats_a:
+        st.markdown(f"**Zakres dla {a_team}**")
+        ctx_a = st.radio("Wybierz:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_a_{league_name}")
+        st.table(create_stat_styled_table(a, ctx_a, df))
+
+    st.divider()
+    st.markdown("### 📊 Porównanie Siły Zespołów")
+    def format_strength(val, is_attack=True):
+        pct = (val - 1.0) * 100
+        color = "green" if (is_attack and val >= 1) or (not is_attack and val <= 1) else "red"
+        return f":{color}[{val:.2f} ({pct:+.0f}%)]"
+
+    st.markdown(f"""
+    | Cecha | {h_team} (Gospodarz) | {a_team} (Gość) |
+    | :--- | :--- | :--- |
+    | **Siła Ataku** | {format_strength(h_atk_s, True)} | {format_strength(a_atk_s, True)} |
+    | **Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |
+    | **Łączny Modyfikator** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |
+    """)
+
+    with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
+        st.subheader("1. Średnie ligowe")
+        st.write(f"Średnia gospodarzy: `{avg_h_gf:.3f}` | Średnia gości: `{avg_a_gf:.3f}`")
+        sc1, sc2 = st.columns(2)
+        with sc1:
+            st.markdown(f"**{h_team}**")
+            st.write(f"🎯 **Bazowa Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
+        with sc2:
+            st.markdown(f"**{a_team}**")
+            st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
+        st.subheader("2. Parametry Poisson (Skorygowane)")
+        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}")
+        st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
+
+    with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
+        limit = 8
+        fig, ax = plt.subplots(figsize=(10, 5))
+        sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
+        plt.xlabel(f"Gole {a_team}") 
+        plt.ylabel(f"Gole {h_team}") 
+        st.pyplot(fig)
+
+    st.divider()
+    st.subheader("📉 Analiza Under / Over")
+    lines = [1.5, 2.5, 3.5, 4.5]
+    ou_cols = st.columns(len(lines))
+    for i, line in enumerate(lines):
+        prob_under = sum(matrix[x, y] for x in range(max_g) for y in range(max_g) if x + y < line)
+        prob_over = 1 - prob_under
+        with ou_cols[i]:
+            st.markdown(f"**Linia {line}**")
+            st.write(f"🟢 **OVER**: {prob_over:.1%} (Kurs: {1/max(prob_over, 0.001):.2f})")
+            st.write(f"🔴 **UNDER**: {prob_under:.1%} (Kurs: {1/max(prob_under, 0.001):.2f})")
+
+    st.divider()
+    st.subheader("🥅 Obie Drużyny Strzelą (BTTS)")
+    prob_btts_yes = sum(matrix[x, y] for x in range(1, max_g) for y in range(1, max_g))
+    prob_btts_no = 1 - prob_btts_yes
+    b1, b2 = st.columns(2)
+    with b1:
+        st.write(f"🟢 **TAK**: {prob_btts_yes:.1%} (Kurs: {1/max(prob_btts_yes, 0.001):.2f})")
+    with b2:
+        st.write(f"🔴 **NIE**: {prob_btts_no:.1%} (Kurs: {1/max(prob_btts_no, 0.001):.2f})")
+
+    if st.button(f"🎲 URUCHOM ANALIZĘ 1 000 000 SCENARIUSZY", use_container_width=True, key=f"sim_{league_name}"):
+        with st.status("Trwa symulowanie (1 mln prób)...", expanded=True) as status:
+            n_sim = 1000000
+            sim_h = np.random.poisson(lambda_f, n_sim)
+            sim_a = np.random.poisson(mu_f, n_sim)
+            res_df = pd.DataFrame({'H': sim_h, 'A': sim_a, 'Total': sim_h + sim_a})
+            most_common_row = res_df.groupby(['H', 'A']).size().idxmax()
+            st.success(f"🏆 Najczęstszy wynik: **{most_common_row[0]}:{most_common_row[1]}**")
+            fig2, ax2 = plt.subplots(figsize=(10, 4))
+            sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=2)
+            sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=2)
+            plt.xlim(-0.5, 8.5) 
+            plt.legend()
+            st.pyplot(fig2)
+            st.markdown("### 🔍 Wnioski")
+            col_w1, col_w2 = st.columns(2)
+            with col_w1:
+                st.write(f"🏠 Wygrane {h_team}: **{(sim_h > sim_a).sum():,}**")
+                st.write(f"🤝 Remisy: **{(sim_h == sim_a).sum():,}**")
+                st.write(f"🚀 Wygrane {a_team}: **{(sim_a > sim_h).sum():,}**")
+            with col_w2:
+                st.write(f"🔥 Over 4.5: **{(res_df['Total'] >= 4.5).sum():,}**")
+                st.write(f"🧤 Czyste konto {h_team}: **{(sim_a == 0).sum():,}**")
+                st.write(f"🥅 BTTS: TAK: **{((sim_h > 0) & (sim_a > 0)).sum():,}**")
+            status.update(label="Analiza zakończona!", state="complete")
+
+# Wywołanie UI piłkarskiego
 with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
 with tab_pl: render_league_ui(load_premier_league(), "Premier League")
-
-# =================================================================
-# --- SEKCJA CHATBOTA GEMINI AI (NAPRAWIONA) ---
-# =================================================================
-
-st.markdown("<br><br><hr><h1 style='text-align: center;'>💬 Chatbot Gemini AI</h1>", unsafe_allow_html=True)
-
-if "GOOGLE_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-else:
-    st.error("❌ Brakuje GOOGLE_API_KEY w Streamlit Secrets.")
-    st.stop()
-
-@st.cache_resource
-def load_gemini_model():
-    return genai.GenerativeModel("gemini-1.5-flash") # Zmiana na 1.5-flash (często ma wyższe limity RPM w darmowej wersji)
-
-model = load_gemini_model()
-
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# --- FUNKCJA GENERUJĄCA Z OBSŁUGĄ LIMITU (RETRY) ---
-def generate_response_with_retry(prompt, retries=3, delay=5):
-    for i in range(retries):
-        try:
-            response = model.generate_content(prompt)
-            return response.text
-        except Exception as e:
-            if "429" in str(e) and i < retries - 1:
-                time.sleep(delay) # Czekaj 5 sekund przed kolejną próbą
-                continue
-            else:
-                raise e
-
-# --- WYŚWIETLANIE CZATU ---
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
-if prompt := st.chat_input("Zadaj pytanie..."):
-    st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    with st.chat_message("assistant"):
-        placeholder = st.empty()
-        placeholder.markdown("*(AI analizuje...)*")
-        try:
-            # Użycie nowej funkcji z ponawianiem
-            answer = generate_response_with_retry(prompt)
-            placeholder.markdown(answer)
-            st.session_state.messages.append({"role": "assistant", "content": answer})
-        except Exception as e:
-            if "429" in str(e):
-                st.error("⏳ Limit API przekroczony. Spróbuj ponownie za minutę.")
-            else:
-                st.error(f"❌ Błąd: {e}")
