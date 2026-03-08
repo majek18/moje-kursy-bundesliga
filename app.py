@@ -1,8 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from scipy.stats import poisson, gaussian_kde
-import plotly.graph_objects as go
+from scipy.stats import poisson
 import seaborn as sns
 import matplotlib.pyplot as plt
 from huggingface_hub import InferenceClient
@@ -274,11 +273,11 @@ def render_league_ui(df, league_name):
 
     with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
         limit = 8
-        fig_mat, ax_mat = plt.subplots(figsize=(10, 5))
+        fig, ax = plt.subplots(figsize=(10, 5))
         sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
         plt.xlabel(f"Gole {a_team}") 
         plt.ylabel(f"Gole {h_team}") 
-        st.pyplot(fig_mat)
+        st.pyplot(fig)
 
     st.divider()
     st.subheader("📉 Analiza Under / Over")
@@ -302,7 +301,6 @@ def render_league_ui(df, league_name):
     with b2:
         st.write(f"🔴 **NIE**: {prob_btts_no:.1%} (Kurs: {1/max(prob_btts_no, 0.001):.2f})")
 
-    # --- MODUŁ SYMULACJI MONTE CARLO Z PLOTLY ---
     st.divider()
     st.subheader("🎲 Symulacja Monte Carlo (1 000 000 scenariuszy)")
     if st.button(f"🚀 URUCHOM ANALIZĘ 1 000 000 SCENARIUSZY", use_container_width=True, key=f"sim_{league_name}"):
@@ -310,58 +308,16 @@ def render_league_ui(df, league_name):
             n_sim = 1000000
             sim_h = np.random.poisson(lambda_f, n_sim)
             sim_a = np.random.poisson(mu_f, n_sim)
-            
-            res_df = pd.DataFrame({'H': sim_h, 'A': sim_a})
+            res_df = pd.DataFrame({'H': sim_h, 'A': sim_a, 'Total': sim_h + sim_a})
             most_common_row = res_df.groupby(['H', 'A']).size().idxmax()
             st.success(f"🏆 Najczęstszy wynik w symulacji: **{most_common_row[0]}:{most_common_row[1]}**")
-
-            # --- PLOTLY HISTOGRAM (PODOBNY DO ZDJĘCIA) ---
-            fig_sim = go.Figure()
-
-            # Histogram dla Gospodarza
-            fig_sim.add_trace(go.Histogram(
-                x=sim_h,
-                name=h_team,
-                marker_color='#1f77b4',
-                opacity=0.6,
-                histnorm='probability density',
-                nbinsx=15
-            ))
-
-            # Histogram dla Gościa
-            fig_sim.add_trace(go.Histogram(
-                x=sim_a,
-                name=a_team,
-                marker_color='#ff7f0e',
-                opacity=0.6,
-                histnorm='probability density',
-                nbinsx=15
-            ))
-
-            # Dodanie linii trendu (KDE) - próbkowanie dla wydajności
-            x_range = np.linspace(0, 10, 100)
-            for data, color, name in zip([sim_h, sim_a], ['#1f77b4', '#ff7f0e'], [h_team, a_team]):
-                kde = gaussian_kde(data[:20000]) # Próbka 20k wystarczy do gładkiej linii
-                fig_sim.add_trace(go.Scatter(
-                    x=x_range, 
-                    y=kde(x_range),
-                    mode='lines',
-                    line=dict(color=color, width=3),
-                    name=f"Trend {name}",
-                    showlegend=False
-                ))
-
-            fig_sim.update_layout(
-                title=f"Rozkład prawdopodobieństwa goli: {h_team} vs {a_team}",
-                xaxis_title="Liczba goli",
-                yaxis_title="Gęstość prawdopodobieństwa",
-                barmode='overlay',
-                template="plotly_white",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                height=500
-            )
-
-            st.plotly_chart(fig_sim, use_container_width=True)
+            fig2, ax2 = plt.subplots(figsize=(10, 4))
+            sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=3, ax=ax2)
+            sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=3, ax=ax2)
+            ax2.set_xlim(-0.5, 8.5) 
+            ax2.set_title("Rozkład prawdopodobieństwa goli")
+            ax2.legend()
+            st.pyplot(fig2, clear_figure=True)
             status.update(label="Analiza zakończona!", state="complete")
 
     st.markdown("<br><hr><h2 style='text-align: center;'>💬 Ekspert AI: Analiza Wyników</h2>", unsafe_allow_html=True)
@@ -419,7 +375,7 @@ def render_league_ui(df, league_name):
 
                 st.markdown(f"**Źródło danych:** {bookie['title']} (Aktualizacja: {match['commence_time'][:10]})")
                 st.table(compare_df.style.applymap(style_value, subset=['Value (%)'])
-                         .format("{:.2f}", subset=['Twój Kurs', 'Kurs Bukmachera'])
+                         .format("{:.2f}", subset=['Twój Kurs', 'Kurs Bukmachera']) # Tu skrócono kursy
                          .format("{:.2%}", subset=['Value (%)']))
                 
                 if any((p1*live_1-1) > 0.05 for _ in [1]):
