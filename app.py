@@ -58,22 +58,6 @@ def load_bundesliga():
     }
     return pd.DataFrame(data)
 
-# --- DANE OSTATNIEJ FORMY (NA PODSTAWIE SCREENÓW) ---
-@st.cache_data
-def load_last_form_data():
-    return {
-        'Bayern Munich': {'m': 6, 'gf': 20, 'ga': 8, 'xg': 16.10, 'xga': 8.36},
-        'Borussia Dortmund': {'m': 6, 'gf': 15, 'ga': 9, 'xg': 12.36, 'xga': 13.11},
-        'VfB Stuttgart': {'m': 6, 'gf': 14, 'ga': 8, 'xg': 12.57, 'xga': 10.34},
-        'RB Leipzig': {'m': 6, 'gf': 11, 'ga': 9, 'xg': 13.56, 'xga': 7.65},
-        'Bayer Leverkusen': {'m': 6, 'gf': 10, 'ga': 6, 'xg': 11.02, 'xga': 7.04},
-        'Augsburg': {'m': 6, 'gf': 9, 'ga': 7, 'xg': 10.02, 'xga': 8.57},
-        'Hoffenheim': {'m': 6, 'gf': 13, 'ga': 11, 'xg': 11.76, 'xga': 10.16},
-        'Eintracht Frankfurt': {'m': 6, 'gf': 10, 'ga': 10, 'xg': 6.25, 'xga': 5.78},
-        'St. Pauli': {'m': 6, 'gf': 7, 'ga': 9, 'xg': 3.52, 'xga': 7.36},
-        'Mainz 05': {'m': 6, 'gf': 8, 'ga': 9, 'xg': 10.93, 'xga': 6.86}
-    }
-
 # --- DANE BAZOWE: PREMIER LEAGUE ---
 @st.cache_data
 def load_premier_league():
@@ -166,7 +150,7 @@ def render_league_ui(df, league_name):
             h_f = st.select_slider("FORMA", options=mod_range, value=0, key=f"h_f_{league_name}_{m_key}")
             h_s = st.select_slider("STYL GRY", options=mod_range, value=0, key=f"h_s_{league_name}_{m_key}")
             h_p = st.select_slider("POGODA", options=mod_range, value=0, key=f"h_p_{league_name}_{m_key}")
-            h_total_mod_man = (h_k + h_f + h_s + h_p) / 100
+            h_total_mod = (h_k + h_f + h_s + h_p) / 100
             st.button("🧹 Resetuj", key=f"reset_h_{league_name}", on_click=reset_mods, use_container_width=True)
     with col_b:
         a_team = st.selectbox(f"Gość", df['Team'], index=1, key=f"a_{league_name}")
@@ -179,81 +163,20 @@ def render_league_ui(df, league_name):
             a_f = st.select_slider("FORMA", options=mod_range, value=0, key=f"a_f_{league_name}_{m_key}")
             a_s = st.select_slider("STYL GRY", options=mod_range, value=0, key=f"a_s_{league_name}_{m_key}")
             a_p = st.select_slider("POGODA", options=mod_range, value=0, key=f"a_p_{league_name}_{m_key}")
-            a_total_mod_man = (a_k + a_f + a_s + a_p) / 100
+            a_total_mod = (a_k + a_f + a_s + a_p) / 100
             st.button("🧹 Resetuj", key=f"reset_a_{league_name}", on_click=reset_mods, use_container_width=True)
 
-    # --- MODUŁ: AUTOMATYCZNA ANALIZA FORMY ---
-    st.divider()
-    st.markdown("### 📈 Automatyczna Analiza Formy i Bonusów")
-    
-    form_data_dict = load_last_form_data()
-    h_f_stats = form_data_dict.get(h_team, {'m': 5, 'gf': 0, 'ga': 0, 'xg': 0, 'xga': 0})
-    a_f_stats = form_data_dict.get(a_team, {'m': 5, 'gf': 0, 'ga': 0, 'xg': 0, 'xga': 0})
-    
-    h_row, a_row = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
-
-    def get_form_analysis(team_name, f_data, team_row, is_home):
-        # Pobieranie danych bazowych (sezonowych)
-        base_xg_f = team_row['HxG_F'] if is_home else team_row['TxG_F']
-        base_g_f = team_row['H_GF'] if is_home else team_row['T_GF']
-        base_xg_a = team_row['HxG_A'] if is_home else team_row['TxG_A']
-        base_g_a = team_row['H_GA'] if is_home else team_row['T_GA']
-
-        # 1. Tabela Porównawcza
-        comp_df = pd.DataFrame({
-            "Kategoria": ["Liczba meczów", "Gole Strzelone (śr.)", "xG Ofensywne (śr.)", "Gole Stracone (śr.)", "xG Defensywne (śr.)"],
-            "Średnia Sezonowa": [15, base_g_f, base_xg_f, base_g_a, base_xg_a],
-            f"Ostatnie {f_data['m']} meczów": [
-                f_data['m'], 
-                f_data['gf']/f_data['m'] if f_data['m'] > 0 else 0, 
-                f_data['xg']/f_data['m'] if f_data['m'] > 0 else 0, 
-                f_data['ga']/f_data['m'] if f_data['m'] > 0 else 0, 
-                f_data['xga']/f_data['m'] if f_data['m'] > 0 else 0
-            ]
-        })
-
-        # 2. Obliczenia bonusu (Matematyka)
-        trend_kr = ((f_data['xg']/f_data['m']) - base_xg_f) / base_xg_f if base_xg_f > 0 else 0
-        skutecznosc = (f_data['gf'] - f_data['xg']) / f_data['xg'] if f_data['xg'] > 0 else 0
-        bonus_atk = ((trend_kr * 0.7) + (skutecznosc * 0.3)) * 0.25
-
-        trend_def = (base_xg_a - (f_data['xga']/f_data['m'])) / base_xg_a if base_xg_a > 0 else 0
-        forma_br = (f_data['xga'] - f_data['ga']) / f_data['xga'] if f_data['xga'] > 0 else 0
-        bonus_def = ((trend_def * 0.7) + (forma_br * 0.3)) * 0.25
-
-        return comp_df, bonus_atk, bonus_def, trend_kr, skutecznosc, trend_def, forma_br
-
-    # Generowanie danych dla obu drużyn
-    h_comp, h_b_atk, h_b_def, h_tr_k, h_skut, h_tr_d, h_fbr = get_form_analysis(h_team, h_f_stats, h_row, True)
-    a_comp, a_b_atk, a_b_def, a_tr_k, a_skut, a_tr_d, a_fbr = get_form_analysis(a_team, a_f_stats, a_row, False)
-
-    col_h_f, col_a_f = st.columns(2)
-    with col_h_f:
-        st.subheader(f"📊 Formy: {h_team}")
-        st.table(h_comp.style.format("{:.2f}", subset=["Średnia Sezonowa", f"Ostatnie {h_f_stats['m']} meczów"]))
-        with st.expander("🔍 Rozpisanie bonusu Gospodarza"):
-            st.write(f"**Atak:** (Trend xG: `{h_tr_k:+.2%}` × 0.7) + (Skuteczność: `{h_skut:+.2%}` × 0.3) × 0.25")
-            st.write(f"**Obrona:** (Trend xGA: `{h_tr_d:+.2%}` × 0.7) + (Interwencje: `{h_fbr:+.2%}` × 0.3) × 0.25")
-            st.markdown(f"**Finalny Bonus Ataku: `{h_b_atk:+.2%}`**")
-    with col_a_f:
-        st.subheader(f"📊 Formy: {a_team}")
-        st.table(a_comp.style.format("{:.2f}", subset=["Średnia Sezonowa", f"Ostatnie {a_f_stats['m']} meczów"]))
-        with st.expander("🔍 Rozpisanie bonusu Gościa"):
-            st.write(f"**Atak:** (Trend xG: `{a_tr_k:+.2%}` × 0.7) + (Skuteczność: `{a_skut:+.2%}` × 0.3) × 0.25")
-            st.write(f"**Obrona:** (Trend xGA: `{a_tr_d:+.2%}` × 0.7) + (Interwencje: `{a_fbr:+.2%}` × 0.3) × 0.25")
-            st.markdown(f"**Finalny Bonus Ataku: `{a_b_atk:+.2%}`**")
-
-    # Finalne parametry Poisson
-    l_h_r = (h_row['HxG_F']*w0 + h_row['H_GF']*w1 + h_row['AxG_F']*w2 + h_row['T_GF']*w3)
-    m_h_r = (h_row['HxG_A']*w0 + h_row['H_GA']*w1 + h_row['AxG_A']*w2 + h_row['T_GA']*w3)
-    l_a_r = (a_row['TxG_F']*w0 + a_row['A_GF']*w1 + a_row['AxG_F']*w2 + a_row['T_GF']*w3)
-    m_a_r = (a_row['TxG_A']*w0 + a_row['A_GA']*w1 + a_row['AxG_A']*w2 + a_row['T_GA']*w3)
+    h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
+    l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['AxG_F']*w2 + h['T_GF']*w3)
+    m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['AxG_A']*w2 + h['T_GA']*w3)
+    l_a_r = (a['TxG_F']*w0 + a['A_GF']*w1 + a['AxG_F']*w2 + a['T_GF']*w3)
+    m_a_r = (a['TxG_A']*w0 + a['A_GA']*w1 + a['AxG_A']*w2 + a['T_GA']*w3)
 
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 
-    lambda_f = (h_atk_s * (a_def_s * (1 - a_b_def)) * avg_h_gf) * (1 + h_total_mod_man + h_b_atk)
-    mu_f = (a_atk_s * (h_def_s * (1 - h_b_def)) * avg_a_gf) * (1 + a_total_mod_man + a_b_atk)
+    lambda_f = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod)
+    mu_f = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod)
 
     max_g = 12
     matrix = np.zeros((max_g, max_g))
@@ -313,11 +236,11 @@ def render_league_ui(df, league_name):
     with col_stats_h:
         st.markdown(f"**Zakres dla {h_team}**")
         ctx_h = st.radio("Wybierz:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_h_{league_name}")
-        st.table(create_stat_styled_table(h_row, ctx_h, df))
+        st.table(create_stat_styled_table(h, ctx_h, df))
     with col_stats_a:
         st.markdown(f"**Zakres dla {a_team}**")
         ctx_a = st.radio("Wybierz:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_a_{league_name}")
-        st.table(create_stat_styled_table(a_row, ctx_a, df))
+        st.table(create_stat_styled_table(a, ctx_a, df))
 
     st.divider()
     st.markdown("### 📊 Porównanie Siły Zespołów")
@@ -331,8 +254,7 @@ def render_league_ui(df, league_name):
     | :--- | :--- | :--- |
     | **Siła Ataku** | {format_strength(h_atk_s, True)} | {format_strength(a_atk_s, True)} |
     | **Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |
-    | **Modyfikator Manualny** | **{h_total_mod_man:+.0%}** | **{a_total_mod_man:+.0%}** |
-    | **Bonus Formy (Atak)** | **{h_b_atk:+.0%}** | **{a_b_atk:+.0%}** |
+    | **Łączny Modyfikator** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |
     """)
 
     with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
@@ -346,8 +268,8 @@ def render_league_ui(df, league_name):
             st.markdown(f"**{a_team}**")
             st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
         st.subheader("2. Parametry Poisson (Skorygowane)")
-        st.latex(rf"\lambda_{{final}} = {lambda_f:.3f}")
-        st.latex(rf"\mu_{{final}} = {mu_f:.3f}")
+        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}")
+        st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
 
     with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
         limit = 8
@@ -429,10 +351,12 @@ def render_league_ui(df, league_name):
     odds_data = get_live_odds(LEAGUE_MAP.get(league_name))
     if odds_data:
         match = next((m for m in odds_data if h_team in m['home_team'] or a_team in m['away_team']), None)
+        
         if match:
             try:
                 bookie = match['bookmakers'][0]
                 mkt = bookie['markets'][0]['outcomes']
+                
                 live_1 = next(o['price'] for o in mkt if o['name'] == match['home_team'])
                 live_2 = next(o['price'] for o in mkt if o['name'] == match['away_team'])
                 live_x = next(o['price'] for o in mkt if o['name'] == 'Draw')
@@ -451,7 +375,7 @@ def render_league_ui(df, league_name):
 
                 st.markdown(f"**Źródło danych:** {bookie['title']} (Aktualizacja: {match['commence_time'][:10]})")
                 st.table(compare_df.style.applymap(style_value, subset=['Value (%)'])
-                         .format("{:.2f}", subset=['Twój Kurs', 'Kurs Bukmachera'])
+                         .format("{:.2f}", subset=['Twój Kurs', 'Kurs Bukmachera']) # Tu skrócono kursy
                          .format("{:.2%}", subset=['Value (%)']))
                 
                 if any((p1*live_1-1) > 0.05 for _ in [1]):
