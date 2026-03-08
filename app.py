@@ -166,6 +166,67 @@ def render_league_ui(df, league_name):
             a_total_mod = (a_k + a_f + a_s + a_p) / 100
             st.button("🧹 Resetuj", key=f"reset_a_{league_name}", on_click=reset_mods, use_container_width=True)
 
+    # --- NOWA SEKCJA: BONUS ZA FORMĘ (Tylko Bundesliga) ---
+    h_atk_bonus, h_def_bonus, a_atk_bonus, a_def_bonus = 0.0, 0.0, 0.0, 0.0
+    
+    if league_name == "Bundesliga":
+        st.divider()
+        st.markdown("### 📈 Zaawansowany Bonus za Formę (xG & Gole)")
+        f_col_h, f_col_a = st.columns(2)
+        
+        with f_col_h:
+            st.markdown(f"**Ostatnie mecze: {h_team}**")
+            h_m_count = st.number_input("Liczba meczów", 1, 10, 5, key="h_mc")
+            hc1, hc2 = st.columns(2)
+            h_tot_gf = hc1.number_input("Suma Goli Strzelonych", 0.0, 50.0, float(df[df['Team']==h_team]['H_GF'].values[0]*h_m_count), key="h_tgf")
+            h_tot_ga = hc2.number_input("Suma Goli Straconych", 0.0, 50.0, float(df[df['Team']==h_team]['H_GA'].values[0]*h_m_count), key="h_tga")
+            hc3, hc4 = st.columns(2)
+            h_tot_xgf = hc3.number_input("Suma wykreowanego xG", 0.0, 50.0, float(df[df['Team']==h_team]['HxG_F'].values[0]*h_m_count), key="h_txgf")
+            h_tot_xga = hc4.number_input("Suma dopuszczonego xG", 0.0, 50.0, float(df[df['Team']==h_team]['HxG_A'].values[0]*h_m_count), key="h_txga")
+            
+            # Obliczenia średnich
+            h_avg_xgf, h_avg_gf = h_tot_xgf / h_m_count, h_tot_gf / h_m_count
+            h_avg_xga, h_avg_ga = h_tot_xga / h_m_count, h_tot_ga / h_m_count
+            
+            # Bonus Ataku
+            h_a_trend = (h_avg_xgf - df[df['Team']==h_team]['HxG_F'].values[0]) / max(df[df['Team']==h_team]['HxG_F'].values[0], 0.1)
+            h_a_eff = (h_avg_gf - h_avg_xgf) / max(h_avg_xgf, 0.1)
+            h_atk_bonus = max(min((h_a_trend * 0.7 + h_a_eff * 0.3) * 0.25, 0.10), -0.10)
+            
+            # Bonus Obrony
+            h_d_trend = (df[df['Team']==h_team]['HxG_A'].values[0] - h_avg_xga) / max(df[df['Team']==h_team]['HxG_A'].values[0], 0.1)
+            h_d_eff = (h_avg_xga - h_avg_ga) / max(h_avg_xga, 0.1)
+            h_def_bonus = max(min((h_d_trend * 0.7 + h_d_eff * 0.3) * 0.25, 0.10), -0.10)
+            
+            st.caption(f"Wynik: Atak {h_atk_bonus:+.1%} | Obrona {h_def_bonus:+.1%}")
+
+        with f_col_a:
+            st.markdown(f"**Ostatnie mecze: {a_team}**")
+            a_m_count = st.number_input("Liczba meczów", 1, 10, 5, key="a_mc")
+            ac1, ac2 = st.columns(2)
+            a_tot_gf = ac1.number_input("Suma Goli Strzelonych", 0.0, 50.0, float(df[df['Team']==a_team]['A_GF'].values[0]*a_m_count), key="a_tgf")
+            a_tot_ga = ac2.number_input("Suma Goli Straconych", 0.0, 50.0, float(df[df['Team']==a_team]['A_GA'].values[0]*a_m_count), key="a_tga")
+            ac3, ac4 = st.columns(2)
+            a_tot_xgf = ac3.number_input("Suma wykreowanego xG", 0.0, 50.0, float(df[df['Team']==a_team]['TxG_F'].values[0]*a_m_count), key="a_txgf")
+            a_tot_xga = ac4.number_input("Suma dopuszczonego xG", 0.0, 50.0, float(df[df['Team']==a_team]['TxG_A'].values[0]*a_m_count), key="a_txga")
+            
+            # Obliczenia średnich
+            a_avg_xgf, a_avg_gf = a_tot_xgf / a_m_count, a_tot_gf / a_m_count
+            a_avg_xga, a_avg_ga = a_tot_xga / a_m_count, a_tot_ga / a_m_count
+            
+            # Bonus Ataku
+            a_a_trend = (a_avg_xgf - df[df['Team']==a_team]['TxG_F'].values[0]) / max(df[df['Team']==a_team]['TxG_F'].values[0], 0.1)
+            a_a_eff = (a_avg_gf - a_avg_xgf) / max(a_avg_xgf, 0.1)
+            a_atk_bonus = max(min((a_a_trend * 0.7 + a_a_eff * 0.3) * 0.25, 0.10), -0.10)
+            
+            # Bonus Obrony
+            a_d_trend = (df[df['Team']==a_team]['TxG_A'].values[0] - a_avg_xga) / max(df[df['Team']==a_team]['TxG_A'].values[0], 0.1)
+            a_d_eff = (a_avg_xga - a_avg_ga) / max(a_avg_xga, 0.1)
+            a_def_bonus = max(min((a_d_trend * 0.7 + a_d_eff * 0.3) * 0.25, 0.10), -0.10)
+            
+            st.caption(f"Wynik: Atak {a_atk_bonus:+.1%} | Obrona {a_def_bonus:+.1%}")
+
+    # --- OBLICZENIA POISSON ---
     h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
     l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['AxG_F']*w2 + h['T_GF']*w3)
     m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['AxG_A']*w2 + h['T_GA']*w3)
@@ -175,8 +236,9 @@ def render_league_ui(df, league_name):
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 
-    lambda_f = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod)
-    mu_f = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod)
+    # Aplikacja bonusów (Bonus obrony przeciwnika wpływa na Twoje gole)
+    lambda_f = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod + h_atk_bonus - a_def_bonus)
+    mu_f = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod + a_atk_bonus - h_def_bonus)
 
     max_g = 12
     matrix = np.zeros((max_g, max_g))
@@ -254,7 +316,9 @@ def render_league_ui(df, league_name):
     | :--- | :--- | :--- |
     | **Siła Ataku** | {format_strength(h_atk_s, True)} | {format_strength(a_atk_s, True)} |
     | **Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |
-    | **Łączny Modyfikator** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |
+    | **Bonus Formy (Atak)** | **{h_atk_bonus:+.1%}** | **{a_atk_bonus:+.1%}** |
+    | **Bonus Formy (Obrona)** | **{h_def_bonus:+.1%}** | **{a_def_bonus:+.1%}** |
+    | **Modyfikatory Ręczne** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |
     """)
 
     with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
@@ -268,8 +332,8 @@ def render_league_ui(df, league_name):
             st.markdown(f"**{a_team}**")
             st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
         st.subheader("2. Parametry Poisson (Skorygowane)")
-        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}")
-        st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
+        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod + h_atk_bonus - a_def_bonus:+.2f}) = {lambda_f:.3f}")
+        st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod + a_atk_bonus - h_def_bonus:+.2f}) = {mu_f:.3f}")
 
     with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
         limit = 8
@@ -375,7 +439,7 @@ def render_league_ui(df, league_name):
 
                 st.markdown(f"**Źródło danych:** {bookie['title']} (Aktualizacja: {match['commence_time'][:10]})")
                 st.table(compare_df.style.applymap(style_value, subset=['Value (%)'])
-                         .format("{:.2f}", subset=['Twój Kurs', 'Kurs Bukmachera']) # Tu skrócono kursy
+                         .format("{:.2f}", subset=['Twój Kurs', 'Kurs Bukmachera'])
                          .format("{:.2%}", subset=['Value (%)']))
                 
                 if any((p1*live_1-1) > 0.05 for _ in [1]):
