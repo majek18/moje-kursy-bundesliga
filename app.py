@@ -5,7 +5,7 @@ from scipy.stats import poisson
 import seaborn as sns
 import matplotlib.pyplot as plt
 from huggingface_hub import InferenceClient
-import requests  # Dodane do obsługi API
+import requests
 
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Football Predictor", layout="wide", page_icon="⚽")
@@ -344,41 +344,39 @@ def render_league_ui(df, league_name):
                 except Exception as e: st.error(f"Błąd AI: {str(e)}")
     else: st.info("Dodaj HF_TOKEN do Secrets.")
 
-    # --- NOWY MODUŁ NA DOLE: VALUE BET DETECTOR ---
+    # --- MODUŁ: VALUE BET DETECTOR ---
     st.divider()
     st.markdown("<h2 style='text-align: center;'>⚖️ Porównanie z Rynkiem (Value Bet Detector)</h2>", unsafe_allow_html=True)
     
     odds_data = get_live_odds(LEAGUE_MAP.get(league_name))
     if odds_data:
-        # Próba dopasowania meczu po nazwach drużyn
         match = next((m for m in odds_data if h_team in m['home_team'] or a_team in m['away_team']), None)
         
         if match:
             try:
-                bookie = match['bookmakers'][0] # Pierwszy dostępny bukmacher (zazwyczaj BetOnline/Pinnacle)
+                bookie = match['bookmakers'][0]
                 mkt = bookie['markets'][0]['outcomes']
                 
-                # Pobranie kursów rynkowych (1, X, 2)
                 live_1 = next(o['price'] for o in mkt if o['name'] == match['home_team'])
                 live_2 = next(o['price'] for o in mkt if o['name'] == match['away_team'])
                 live_x = next(o['price'] for o in mkt if o['name'] == 'Draw')
                 
-                # Przygotowanie danych do tabeli
                 compare_df = pd.DataFrame({
                     "Typ": [f"1 ({h_team})", "X (Remis)", f"2 ({a_team})"],
                     "Twoje Prawd.": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"],
-                    "Twój Kurs": [f"{model_odds[0]:.2f}", f"{model_odds[1]:.2f}", f"{model_odds[2]:.2f}"],
+                    "Twój Kurs": [model_odds[0], model_odds[1], model_odds[2]],
                     "Kurs Bukmachera": [live_1, live_x, live_2],
                     "Value (%)": [(p1 * live_1 - 1), (px * live_x - 1), (p2 * live_2 - 1)]
                 })
 
-                # Stylizacja tabeli
                 def style_value(val):
                     color = '#28a745' if val > 0.05 else '#dc3545' if val < -0.05 else 'transparent'
                     return f'background-color: {color}; color: white; font-weight: bold'
 
                 st.markdown(f"**Źródło danych:** {bookie['title']} (Aktualizacja: {match['commence_time'][:10]})")
-                st.table(compare_df.style.applymap(style_value, subset=['Value (%)']).format("{:.2%}", subset=['Value (%)']))
+                st.table(compare_df.style.applymap(style_value, subset=['Value (%)'])
+                         .format("{:.2f}", subset=['Twój Kurs', 'Kurs Bukmachera']) # Tu skrócono kursy
+                         .format("{:.2%}", subset=['Value (%)']))
                 
                 if any((p1*live_1-1) > 0.05 for _ in [1]):
                      st.success("🎯 Sugestia: Znaleziono matematyczną przewagę nad bukmacherem!")
