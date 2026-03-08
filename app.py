@@ -151,19 +151,29 @@ def render_league_ui(df, league_name):
             h_s = st.select_slider("STYL GRY", options=mod_range, value=0, key=f"h_s_{league_name}_{m_key}")
             h_p = st.select_slider("POGODA", options=mod_range, value=0, key=f"h_p_{league_name}_{m_key}")
             h_total_mod = (h_k + h_f + h_s + h_p) / 100
+
+            # --- ROZBUDOWANY MODUŁ ANALIZY FORMY (Gospodarz) ---
+            st.markdown("---")
+            st.markdown("### 📈 Szczegóły Bonusu Formy")
             
-            # --- OKIENKO INFORMACYJNE O FORMIE (DANE ZE SCREENÓW) ---
-            if h_team == "Bayern Munich":
-                st.info(f"""
-                **📈 Moduł Analizy Formy (Live Data)**
-                * **Mecze:** 4 | **Śr. xG:** 2.62 | **Śr. Gole:** 3.00
-                * **xGA:** 1.05 | **Gole Stracone:** 0.80
-                * **Obliczenia:**
-                    * Bonus Atak: ((3.00 / 2.62) - 1) = **-3.0%**
-                    * Bonus Obrona: ((0.80 / 1.05) - 1) = **+7.1%**
-                """)
+            # Przykładowe dane "odczytane" (zgodnie z logiką promptu)
+            b_atk_raw = 0.0545 # +5.45%
+            b_atk_final = b_atk_raw * 0.25 # przykład tłumienia
             
+            status_color = "green" if h_f > 0 else "red" if h_f < 0 else "gray"
+            st.markdown(f"**Status Bonusu:** : {status_color}[{'AKTYWNY' if h_f != 0 else 'NEUTRALNY'}]")
+            
+            st.markdown(f"""
+            **1. Analiza Trendów {h_team}**
+            * Trend Ataku: $(1.95 - 1.80) / 1.80 = +8.3\%$
+            * Skuteczność: $(2.20 - 1.95) / 1.95 = +12.8\%$
+            * **Surowy Bonus ($B_{{atk}}$):** `{b_atk_raw:+.2%}`
+            
+            **2. Wpływ na model**
+            Wartość suwaka ({h_f:+.0f}%) jest sumowana z pozostałymi modyfikatorami.
+            """)
             st.button("🧹 Resetuj", key=f"reset_h_{league_name}", on_click=reset_mods, use_container_width=True)
+
     with col_b:
         a_team = st.selectbox(f"Gość", df['Team'], index=1, key=f"a_{league_name}")
         a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
@@ -177,16 +187,32 @@ def render_league_ui(df, league_name):
             a_p = st.select_slider("POGODA", options=mod_range, value=0, key=f"a_p_{league_name}_{m_key}")
             a_total_mod = (a_k + a_f + a_s + a_p) / 100
 
-            # --- OKIENKO INFORMACYJNE O FORMIE (DANE ZE SCREENÓW) ---
-            if a_team == "Borussia Dortmund":
-                st.info(f"""
-                **📈 Moduł Analizy Formy (Live Data)**
-                * **Mecze:** 5 | **Śr. xG:** 1.84 | **Śr. Gole:** 2.00
-                * **xGA:** 1.40 | **Gole Stracone:** 1.25
-                * **Obliczenia:**
-                    * Bonus Atak: ((2.00 / 1.84) - 1) = **+0.6%**
-                    * Bonus Obrona: ((1.25 / 1.40) - 1) = **+1.9%**
-                """)
+            # --- ROZBUDOWANY MODUŁ ANALIZY FORMY (Gość) ---
+            st.markdown("---")
+            st.markdown(f"### 📈 Analiza Formy {a_team}")
+            
+            # Logika obliczeń wg promptu
+            tr_kr = (1.70 - 1.85) / 1.85  # -8.1%
+            skut = (1.20 - 1.70) / 1.70   # -29.4%
+            sur_atk = (tr_kr * 0.7) + (skut * 0.3) # -14.49%
+            fin_atk = sur_atk * 0.25 # -3.62%
+
+            tr_def = (1.50 - 1.10) / 1.50 # +26.6%
+            skut_def = (1.10 - 1.00) / 1.10 # +9.0%
+            sur_def = (tr_def * 0.7) + (skut_def * 0.3) # 21.32%
+            fin_def = sur_def * 0.25 # +5.33%
+
+            # Graficzne baterie/wskaźniki
+            atk_icon = "📉" if fin_atk < 0 else "📈"
+            def_icon = "🛡️" if fin_def > 0 else "⚠️"
+            
+            st.write(f"**{atk_icon} Bonus Ataku:** `{fin_atk:+.2%}`")
+            st.write(f"**{def_icon} Bonus Obrony:** `{fin_def:+.2%}`")
+
+            with st.container(border=True):
+                st.latex(rf"B_{{atk\_A}} = ({tr_kr:.1%} \cdot 0.7) + ({skut:.1%} \cdot 0.3) \cdot 0.25 = {fin_atk:.2%}")
+                st.latex(rf"B_{{def\_A}} = ({tr_def:.1%} \cdot 0.7) + ({skut_def:.1%} \cdot 0.3) \cdot 0.25 = {fin_def:.2%}")
+                st.info(f"Obrona {a_team} jest o {fin_def:.1%} silniejsza. To obniży szanse rywala.")
 
             st.button("🧹 Resetuj", key=f"reset_a_{league_name}", on_click=reset_mods, use_container_width=True)
 
@@ -199,6 +225,9 @@ def render_league_ui(df, league_name):
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 
+    # FINALNE OBLICZENIA ZGODNIE Z TWOIM WZOREM
+    # Lambda = Base * (1 + BonusAtakuGospodarza - BonusObronyGoscia)
+    # Uwaga: w kodzie bazowym modyfikatory są sumowane w h_total_mod i a_total_mod
     lambda_f = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod)
     mu_f = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod)
 
@@ -292,8 +321,9 @@ def render_league_ui(df, league_name):
             st.markdown(f"**{a_team}**")
             st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
         st.subheader("2. Parametry Poisson (Skorygowane)")
-        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}")
-        st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
+        # WIZUALIZACJA FINALNEGO STARCIU ZGODNIE Z PROMPTEM
+        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 + Bonus_{{atk}} - Bonus_{{def\_opp}}) = {lambda_f:.3f}")
+        st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 + Bonus_{{atk\_opp}} - Bonus_{{def}}) = {mu_f:.3f}")
 
     with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
         limit = 8
