@@ -256,20 +256,29 @@ def render_league_ui(df, league_name):
     with b2:
         st.write(f"🔴 **NIE**: {prob_btts_no:.1%} (Kurs: {1/max(prob_btts_no, 0.001):.2f})")
 
-    if st.button(f"🎲 URUCHOM ANALIZĘ 1 000 000 SCENARIUSZY", use_container_width=True, key=f"sim_{league_name}"):
+    # --- MODUŁ: SYMULACJA 1 MLN MECZÓW (NAPRAWIONY) ---
+    st.divider()
+    st.subheader("🎲 Symulacja Monte Carlo (1 000 000 scenariuszy)")
+    
+    if st.button(f"🚀 URUCHOM ANALIZĘ 1 000 000 SCENARIUSZY", use_container_width=True, key=f"sim_{league_name}"):
         with st.status("Trwa symulowanie (1 mln prób)...", expanded=True) as status:
             n_sim = 1000000
             sim_h = np.random.poisson(lambda_f, n_sim)
             sim_a = np.random.poisson(mu_f, n_sim)
             res_df = pd.DataFrame({'H': sim_h, 'A': sim_a, 'Total': sim_h + sim_a})
+            
             most_common_row = res_df.groupby(['H', 'A']).size().idxmax()
-            st.success(f"🏆 Najczęstszy wynik: **{most_common_row[0]}:{most_common_row[1]}**")
+            st.success(f"🏆 Najczęstszy wynik w symulacji: **{most_common_row[0]}:{most_common_row[1]}**")
+            
+            # Naprawa grafiki: Jawne tworzenie figury
             fig2, ax2 = plt.subplots(figsize=(10, 4))
-            sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=2)
-            sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=2)
-            plt.xlim(-0.5, 8.5) 
-            plt.legend()
-            st.pyplot(fig2)
+            sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=3, ax=ax2)
+            sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=3, ax=ax2)
+            ax2.set_xlim(-0.5, 8.5) 
+            ax2.set_title("Rozkład prawdopodobieństwa goli")
+            ax2.legend()
+            st.pyplot(fig2, clear_figure=True)
+            
             st.markdown("### 🔍 Wnioski")
             col_w1, col_w2 = st.columns(2)
             with col_w1:
@@ -290,7 +299,6 @@ def render_league_ui(df, league_name):
     if "HF_TOKEN" in st.secrets:
         client = InferenceClient(api_key=st.secrets["HF_TOKEN"])
         
-        # Przygotowanie kontekstu dla bota na podstawie Twoich obliczeń
         current_context = f"""
         MECZ: {h_team} vs {a_team}
         WYNIKI MODELU:
