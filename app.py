@@ -53,6 +53,32 @@ def load_premier_league():
     }
     return pd.DataFrame(data)
 
+# --- DANE BAZOWE: LA LIGA ---
+@st.cache_data
+def load_la_liga():
+    data = {
+        'Team': ['Barcelona', 'Real Madrid', 'Atletico Madrid', 'Villarreal', 'Real Betis', 'Celta Vigo', 'Espanyol', 'Real Sociedad', 'Athletic Club', 'Osasuna', 'Getafe', 'Girona', 'Rayo Vallecano', 'Sevilla', 'Valencia', 'Alaves', 'Elche', 'Mallorca', 'Levante', 'Real Oviedo'],
+        # Gole na mecz (GF/GA) z podziałem na dom/wyjazd
+        'H_GF': [3.15, 2.23, 2.36, 2.23, 1.92, 1.43, 1.23, 1.85, 1.21, 1.85, 0.77, 1.00, 1.15, 1.38, 1.23, 1.23, 1.57, 1.46, 1.00, 0.38],
+        'H_GA': [0.46, 0.69, 0.86, 0.85, 1.15, 1.21, 1.38, 1.54, 1.14, 1.23, 0.85, 1.62, 0.77, 1.46, 1.00, 1.15, 1.07, 1.31, 1.71, 1.08],
+        'A_GF': [2.21, 1.93, 1.00, 1.46, 1.31, 1.31, 1.31, 1.14, 1.00, 0.57, 0.85, 1.07, 0.85, 1.23, 0.85, 0.54, 1.00, 0.86, 1.15, 0.85],
+        'A_GA': [1.43, 1.00, 1.00, 1.54, 1.31, 1.00, 1.62, 1.50, 1.62, 1.14, 1.38, 1.57, 1.69, 1.69, 2.00, 1.46, 2.00, 1.93, 1.62, 2.23],
+        # Statystyki uśrednione dla całego sezonu
+        'T_GF': [2.67, 2.07, 1.70, 1.85, 1.62, 1.37, 1.27, 1.48, 1.11, 1.19, 0.81, 1.04, 1.00, 1.31, 1.04, 0.88, 1.31, 1.15, 1.07, 0.62],
+        'T_GA': [0.96, 0.85, 0.93, 1.19, 1.23, 1.11, 1.50, 1.52, 1.37, 1.19, 1.12, 1.59, 1.23, 1.58, 1.50, 1.31, 1.50, 1.63, 1.67, 1.65],
+        # xG i xGA na mecz u siebie
+        'HxG_F': [2.92, 2.72, 2.46, 2.04, 1.97, 1.49, 1.63, 1.85, 1.71, 1.72, 0.75, 1.35, 1.74, 1.16, 1.63, 1.65, 1.75, 1.44, 1.59, 0.96],
+        'HxG_A': [0.90, 0.94, 0.87, 1.27, 1.26, 1.28, 1.59, 1.51, 0.81, 1.15, 0.98, 2.00, 1.03, 1.63, 0.95, 1.37, 1.85, 1.38, 2.06, 1.47],
+        # xG i xGA na mecz na wyjeździe
+        'TxG_F': [2.84, 2.01, 1.11, 1.55, 1.44, 1.35, 1.35, 1.24, 1.34, 0.91, 0.91, 1.40, 1.28, 1.02, 1.06, 1.20, 0.67, 0.85, 1.36, 1.15],
+        'TxG_A': [1.89, 1.41, 1.47, 1.61, 1.38, 1.42, 1.63, 1.57, 1.57, 1.59, 1.49, 1.63, 1.95, 1.91, 2.02, 1.53, 2.08, 2.25, 1.93, 2.15],
+        # Statystyki xG uśrednione dla całego sezonu
+        'AxG_F': [2.88, 2.35, 1.81, 1.80, 1.71, 1.42, 1.49, 1.53, 1.53, 1.30, 0.83, 1.38, 1.51, 1.09, 1.35, 1.43, 1.25, 1.13, 1.42, 1.05],
+        'AxG_A': [1.41, 1.18, 1.16, 1.44, 1.32, 1.35, 1.61, 1.54, 1.18, 1.38, 1.24, 1.81, 1.49, 1.77, 1.48, 1.45, 1.96, 1.83, 1.92, 1.81],
+        'Logo_ID': [131, 418, 13, 1050, 150, 940, 714, 681, 621, 331, 3709, 12321, 371, 33, 123, 1108, 1531, 237, 335, 338]
+    }
+    return pd.DataFrame(data)
+
 # --- FUNKCJA KOREKTY ---
 def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 0 and y == 0: return 1 - (l_h * m_a * rho)
@@ -89,7 +115,7 @@ w0, w1, w2, w3 = v0/100, v1/100, v2/100, v3/100
 fixed_rho = -0.15
 
 # --- INTERFEJS PIŁKARSKI ---
-tab_bl, tab_pl = st.tabs(["🇩🇪 Bundesliga", "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League"])
+tab_bl, tab_pl, tab_ll = st.tabs(["🇩🇪 Bundesliga", "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League", "🇪🇸 La Liga"])
 
 def render_league_ui(df, league_name):
     avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
@@ -123,10 +149,10 @@ def render_league_ui(df, league_name):
             st.button("🧹 Resetuj", key=f"reset_a_{league_name}", on_click=reset_mods, use_container_width=True)
 
     h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
-    l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['TxG_F']*w2 + h['T_GF']*w3)
-    m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['TxG_A']*w2 + h['T_GA']*w3)
-    l_a_r = (a['AxG_F']*w0 + a['A_GF']*w1 + a['TxG_F']*w2 + a['T_GF']*w3)
-    m_a_r = (a['AxG_A']*w0 + a['A_GA']*w1 + a['TxG_A']*w2 + a['T_GA']*w3)
+    l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['AxG_F']*w2 + h['T_GF']*w3)
+    m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['AxG_A']*w2 + h['T_GA']*w3)
+    l_a_r = (a['TxG_F']*w0 + a['A_GF']*w1 + a['AxG_F']*w2 + a['T_GF']*w3)
+    m_a_r = (a['TxG_A']*w0 + a['A_GA']*w1 + a['AxG_A']*w2 + a['T_GA']*w3)
 
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
@@ -167,14 +193,14 @@ def render_league_ui(df, league_name):
 
     def create_stat_styled_table(team_data, context, full_df):
         if context == "Cały sezon":
-            gf, ga, xgf, xga = team_data['T_GF'], team_data['T_GA'], team_data['TxG_F'], team_data['TxG_A']
-            l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['T_GF'].mean(), full_df['T_GA'].mean(), full_df['TxG_F'].mean(), full_df['TxG_A'].mean()
+            gf, ga, xgf, xga = team_data['T_GF'], team_data['T_GA'], team_data['AxG_F'], team_data['AxG_A']
+            l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['T_GF'].mean(), full_df['T_GA'].mean(), full_df['AxG_F'].mean(), full_df['AxG_A'].mean()
         elif context == "Dom":
             gf, ga, xgf, xga = team_data['H_GF'], team_data['H_GA'], team_data['HxG_F'], team_data['HxG_A']
             l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['H_GF'].mean(), full_df['H_GA'].mean(), full_df['HxG_F'].mean(), full_df['HxG_A'].mean()
         else:
-            gf, ga, xgf, xga = team_data['A_GF'], team_data['A_GA'], team_data['AxG_F'], team_data['AxG_A']
-            l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['A_GF'].mean(), full_df['A_GA'].mean(), full_df['AxG_F'].mean(), full_df['AxG_A'].mean()
+            gf, ga, xgf, xga = team_data['A_GF'], team_data['A_GA'], team_data['TxG_F'], team_data['TxG_A']
+            l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['A_GF'].mean(), full_df['A_GA'].mean(), full_df['TxG_F'].mean(), full_df['TxG_A'].mean()
 
         df_stats = pd.DataFrame({
             "Statystyka": ["Gole Strzelone", "Gole Stracone", "xG (Atak)", "xG (Obrona)"],
@@ -270,7 +296,6 @@ def render_league_ui(df, league_name):
             most_common_row = res_df.groupby(['H', 'A']).size().idxmax()
             st.success(f"🏆 Najczęstszy wynik w symulacji: **{most_common_row[0]}:{most_common_row[1]}**")
             
-            # Naprawa grafiki: Jawne tworzenie figury
             fig2, ax2 = plt.subplots(figsize=(10, 4))
             sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=3, ax=ax2)
             sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=3, ax=ax2)
@@ -291,25 +316,11 @@ def render_league_ui(df, league_name):
                 st.write(f"🥅 BTTS: TAK: **{((sim_h > 0) & (sim_a > 0)).sum():,}**")
             status.update(label="Analiza zakończona!", state="complete")
 
-    # =================================================================
-    # --- SEKCJA CHATBOTA HUGGING FACE (Z KONTEKSTEM OBLICZEŃ) ---
-    # =================================================================
     st.markdown("<br><hr><h2 style='text-align: center;'>💬 Ekspert AI: Analiza Wyników</h2>", unsafe_allow_html=True)
 
     if "HF_TOKEN" in st.secrets:
         client = InferenceClient(api_key=st.secrets["HF_TOKEN"])
-        
-        current_context = f"""
-        MECZ: {h_team} vs {a_team}
-        WYNIKI MODELU:
-        - Szansa na wygraną {h_team}: {p1:.1%}
-        - Szansa na remis: {px:.1%}
-        - Szansa na wygraną {a_team}: {p2:.1%}
-        - Przewidywane gole (ExG) {h_team}: {lambda_f:.2f}
-        - Przewidywane gole (ExG) {a_team}: {mu_f:.2f}
-        - Modyfikatory (kontuzje/forma): {h_team} ({h_total_mod:+.0%}), {a_team} ({a_total_mod:+.0%})
-        - Średnie ligowe: Gospodarze {avg_h_gf:.2f}, Goście {avg_a_gf:.2f}
-        """
+        current_context = f"MECZ: {h_team} vs {a_team}. Szanse: {p1:.1%} / {px:.1%} / {p2:.1%}. ExG: {lambda_f:.2f} - {mu_f:.2f}."
 
         if f"messages_{league_name}" not in st.session_state:
             st.session_state[f"messages_{league_name}"] = []
@@ -318,34 +329,26 @@ def render_league_ui(df, league_name):
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        if prompt := st.chat_input("Zadaj pytanie o tę analizę...", key=f"chat_input_{league_name}"):
+        if prompt := st.chat_input("Zadaj pytanie...", key=f"chat_input_{league_name}"):
             st.session_state[f"messages_{league_name}"].append({"role": "user", "content": prompt})
-            with st.chat_message("user"):
-                st.markdown(prompt)
+            with st.chat_message("user"): st.markdown(prompt)
 
             with st.chat_message("assistant"):
                 placeholder = st.empty()
-                placeholder.markdown("🔍 *Analizuję dane z modelu...*")
                 try:
                     response = client.chat.completions.create(
                         model="meta-llama/Meta-Llama-3-8B-Instruct",
-                        messages=[
-                            {
-                                "role": "system", 
-                                "content": f"Jesteś ekspertem statystyki piłkarskiej. Analizujesz konkretny mecz na podstawie dostarczonych liczb: {current_context}. Odpowiadaj rzeczowo, po polsku, wskazując na konkretne prawdopodobieństwa z modelu."
-                            },
-                            {"role": "user", "content": prompt}
-                        ],
+                        messages=[{"role": "system", "content": f"Ekspert piłkarski. Kontekst: {current_context}"}, {"role": "user", "content": prompt}],
                         max_tokens=500
                     )
                     full_response = response.choices[0].message.content
                     placeholder.markdown(full_response)
                     st.session_state[f"messages_{league_name}"].append({"role": "assistant", "content": full_response})
-                except Exception as e:
-                    st.error(f"Błąd AI: {str(e)}")
+                except Exception as e: st.error(f"Błąd AI: {str(e)}")
     else:
-        st.info("💡 Dodaj `HF_TOKEN` do Secrets, aby rozmawiać z ekspertem AI o tych wynikach.")
+        st.info("Dodaj HF_TOKEN do Secrets.")
 
-# Wywołanie UI piłkarskiego
+# Wywołanie UI
 with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
 with tab_pl: render_league_ui(load_premier_league(), "Premier League")
+with tab_ll: render_league_ui(load_la_liga(), "La Liga")
