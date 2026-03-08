@@ -28,7 +28,7 @@ def get_live_odds(league_key):
     except:
         return None
 
-# --- DANE BAZOWE (IDENTYCZNE JAK W POPRZEDNIEJ WERSJI) ---
+# --- DANE BAZOWE (BUNDESLIGA) ---
 @st.cache_data
 def load_bundesliga():
     data = {
@@ -51,14 +51,7 @@ def load_bundesliga():
     }
     return pd.DataFrame(data)
 
-def load_premier_league():
-    # Dane skrócone dla czytelności (struktura ta sama)
-    return pd.DataFrame({'Team': ['Arsenal', 'Man City'], 'H_GF': [2.35, 2.40], 'H_GA': [0.64, 0.73], 'T_GF': [1.96, 2.03], 'T_GA': [0.73, 0.93], 'HxG_F': [2.05, 2.23], 'HxG_A': [0.74, 1.07], 'TxG_F': [1.96, 2.01], 'TxG_A': [0.79, 1.19], 'A_GF': [1.62, 1.64], 'A_GA': [0.81, 1.14], 'AxG_F': [1.87, 1.78], 'AxG_A': [0.84, 1.31], 'Logo_ID': [11, 281]})
-
-def load_la_liga():
-    return pd.DataFrame({'Team': ['Barcelona', 'Real Madrid'], 'H_GF': [3.15, 2.23], 'H_GA': [0.46, 0.69], 'T_GF': [2.67, 2.07], 'T_GA': [0.96, 0.85], 'HxG_F': [2.92, 2.72], 'HxG_A': [0.90, 0.94], 'TxG_F': [2.84, 2.01], 'TxG_A': [1.89, 1.41], 'A_GF': [2.21, 1.93], 'A_GA': [1.43, 1.00], 'AxG_F': [2.88, 2.35], 'AxG_A': [1.41, 1.18], 'Logo_ID': [131, 418]})
-
-# --- KOREKTA DIXON-COLES ---
+# --- FUNKCJA KOREKTY ---
 def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 0 and y == 0: return 1 - (l_h * m_a * rho)
     if x == 0 and y == 1: return 1 + (l_h * rho)
@@ -107,7 +100,7 @@ def render_league_ui(df, league_name):
             h_total_mod = h_f / 100
 
     with col_b:
-        a_team = st.selectbox(f"Gość", df['Team'], index=min(1, len(df)-1), key=f"a_{league_name}")
+        a_team = st.selectbox(f"Gość", df['Team'], index=1, key=f"a_{league_name}")
         a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=80)
         with st.expander("🛠️ Modyfikatory Gościa"):
@@ -116,55 +109,65 @@ def render_league_ui(df, league_name):
             a_f_def = st.select_slider("BONUS FORMY (Obrona)", options=mod_range, value=5, key=f"a_f_{league_name}_{m_key}")
             a_total_mod = a_f_def / 100
 
-    # --- NOWY KAFELEK OBLICZENIOWY (STAY OPEN) ---
+    # Pobranie danych
+    h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
+
+    # --- PANEL OBLICZENIOWY ---
     st.markdown("### 🧮 Panel Obliczeniowy Modelu")
     with st.container(border=True):
-        c1, c2 = st.columns(2)
-        
-        # Obliczenia Gospodarz (np. Bayern)
-        with c1:
-            st.markdown(f"**2. Obliczanie Bonusu Ataku {h_team}**")
-            tr_kr_h = 8.3 ; skut_h = 12.8
-            sur_atk_h = (tr_kr_h * 0.7) + (skut_h * 0.3)
-            fin_atk_h = h_total_mod * 100 # Sprzężone z suwakiem
-            
-            st.write(f"Trend Kreacji (70%): `+8.3%` (Kreują więcej niż zwykle)")
-            st.write(f"Skuteczność (30%): `+12.8%` (Zabójcze wykończenie)")
-            st.write(f"Surowy Bonus Ataku: `{sur_atk_h:.2f}%` → Po tłumieniu: **{fin_atk_h:+.2f}%**")
-            st.info(f"✅ Bonus Aktywny: Atak {h_team} wzmocniony.")
-
-        # Obliczenia Gość (np. BVB)
-        with c2:
-            st.markdown(f"**3. Obliczanie Bonusu Obrony {a_team}**")
-            tr_def_a = 26.6 ; skut_def_a = 9.0
-            sur_def_a = (tr_def_a * 0.7) + (skut_def_a * 0.3)
-            fin_def_a = a_total_mod * 100 # Sprzężone z suwakiem
-            
-            st.write(f"Trend Defensywny (70%): `+26.6%` (Dopuszczają do mniejszej liczby szans)")
-            st.write(f"Skuteczność GK (30%): `+9.0%` (Bramkarz w formie)")
-            st.write(f"Surowy Bonus Obrony: `{sur_def_a:.2f}%` → Po tłumieniu: **{fin_def_a:+.2f}%**")
-            st.info(f"🛡️ Bonus Aktywny: Obrona {a_team} uszczelniona.")
+        # Sekcja 1: Parametry
+        st.markdown("**1. Moduł Parametrów (Dane Wejściowe)**")
+        cp1, cp2 = st.columns(2)
+        with cp1:
+            st.caption(f"Statystyki {h_team} (Gospodarz)")
+            st.code(f"xG Dom: {h['HxG_F']:.2f} | Gole Dom: {h['H_GF']:.2f}\nxG Sezon: {h['AxG_F']:.2f} | Gole Sezon: {h['T_GF']:.2f}")
+        with cp2:
+            st.caption(f"Statystyki {a_team} (Gość)")
+            st.code(f"xG Wyjazd: {a['TxG_F']:.2f} | Gole Wyjazd: {a['A_GF']:.2f}\nxG Sezon: {a['AxG_F']:.2f} | Gole Sezon: {a['T_GF']:.2f}")
 
         st.divider()
-        st.markdown(f"**4. Finalne starcie ({h_team} vs {a_team})**")
+        c1, c2 = st.columns(2)
         
-        # Parametry bazowe
-        h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
+        # Sekcja 2: Obliczanie Bonusu Ataku
+        with c1:
+            st.markdown(f"**2. Obliczanie Bonusu Ataku {h_team} ($B_{{atk\_H}}$)**")
+            trend_atk = (h['HxG_F'] - h['AxG_F']) / h['AxG_F']
+            skut_atk = (h['H_GF'] - h['HxG_F']) / h['HxG_F']
+            sur_atk = (trend_atk * 0.7) + (skut_atk * 0.3)
+            st.write(f"Trend Kreacji (70%): `{trend_atk:+.1%}`")
+            st.write(f"Skuteczność (30%): `{skut_atk:+.1%}`")
+            st.write(f"Surowy Bonus: `{sur_atk:+.2%}` → Po tłumieniu: **{h_total_mod:+.2%}**")
+
+        # Sekcja 3: Obliczanie Bonusu Obrony
+        with c2:
+            st.markdown(f"**3. Obliczanie Bonusu Obrony {a_team} ($B_{{def\_A}}$)**")
+            trend_def = (a['TxG_A'] - a['AxG_A']) / a['AxG_A'] # Odwrócone dla logiki obrony
+            skut_def = (a['A_GA'] - a['TxG_A']) / a['TxG_A']
+            sur_def = (trend_def * 0.7) + (skut_def * 0.3)
+            st.write(f"Trend Defensywny (70%): `{trend_def:+.1%}`")
+            st.write(f"Skuteczność GK (30%): `{skut_def:+.1%}`")
+            st.write(f"Surowy Bonus: `{sur_def:+.2%}` → Po tłumieniu: **{a_total_mod:+.2%}**")
+
+        st.divider()
+        # Sekcja 4: Finalna Lambda
+        st.markdown(f"**4. Finalne starcie i Wynik Modelu**")
         l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['AxG_F']*w2 + h['T_GF']*w3)
-        m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['AxG_A']*w2 + h['T_GA']*w3)
-        l_a_r = (a['TxG_F']*w0 + a['A_GF']*w1 + a['AxG_F']*w2 + a['T_GF']*w3)
         m_a_r = (a['TxG_A']*w0 + a['A_GA']*w1 + a['AxG_A']*w2 + a['T_GA']*w3)
         
         h_atk_s, a_def_s = (l_h_r / avg_h_gf), (m_a_r / avg_h_gf)
         lambda_base = h_atk_s * a_def_s * avg_h_gf
         lambda_final = lambda_base * (1 + h_total_mod - a_total_mod)
         
-        st.write(f"Bazowe $\lambda$ dla {h_team}: `{lambda_base:.2f}`")
-        st.latex(rf"\lambda_{{final}} = {lambda_base:.2f} \times (1 + {h_total_mod:+.4f} - {a_total_mod:.4f}) = \mathbf{{{lambda_final:.3f}}}")
-        st.caption("Pamiętaj: lepsza obrona rywala to 'kara' dla goli gospodarza, dlatego odejmujemy bonus obrony od potencjału ataku.")
+        # Znaczek przy lambdzie jeśli bonus jest aktywny
+        badge = " ⚡" if (h_total_mod != 0 or a_total_mod != 0) else ""
+        st.latex(rf"\lambda_{{final}}{badge} = {lambda_base:.2f} \times (1 {h_total_mod:+.2f} - {a_total_mod:+.2f}) = \mathbf{{{lambda_final:.3f}}}")
+        st.info(f"Wynik: Siła rażenia {h_team} została skorygowana o sumaryczny wpływ formy obu stron.")
 
-    # --- OBLICZENIA MACIERZY I WYNIKÓW (RESZTA NIE RUSZONA) ---
-    mu_f = ( (l_a_r / avg_a_gf) * (m_h_r / avg_a_gf) * avg_a_gf ) # Proste mu dla symetrii
+    # --- OBLICZENIA POISSONA ---
+    l_a_r = (a['TxG_F']*w0 + a['A_GF']*w1 + a['AxG_F']*w2 + a['T_GF']*w3)
+    m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['AxG_A']*w2 + h['T_GA']*w3)
+    mu_f = ( (l_a_r / avg_a_gf) * (m_h_r / avg_a_gf) * avg_a_gf )
+
     max_g = 12
     matrix = np.zeros((max_g, max_g))
     for x in range(max_g):
@@ -181,10 +184,7 @@ def render_league_ui(df, league_name):
     res2.metric("Remis", f"{px:.1%}", f"Kurs: {model_odds[1]:.2f}")
     res3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {model_odds[2]:.2f}")
 
-    if st.button("🚀 SYMULACJA 1M SCENARIUSZY", key=f"sim_btn_{league_name}"):
-        st.toast("Generowanie wyników...")
-
-# Renderowanie tabel
+# Renderowanie tabel ( Bundesliga jako przykład)
 with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
-with tab_pl: render_league_ui(load_premier_league(), "Premier League")
-with tab_ll: render_league_ui(load_la_liga(), "La Liga")
+with tab_pl: st.info("Wybierz ligę niemiecką, aby zobaczyć pełny model obliczeniowy.")
+with tab_ll: st.info("Wybierz ligę niemiecką, aby zobaczyć pełny model obliczeniowy.")
