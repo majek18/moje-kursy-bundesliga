@@ -2,13 +2,13 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from scipy.stats import poisson
-import plotly.express as px
-import plotly.graph_objects as go
+import seaborn as sns
+import matplotlib.pyplot as plt
 from huggingface_hub import InferenceClient
 import requests
 
 # --- KONFIGURACJA STRONY ---
-st.set_page_config(page_title="Football Predictor PRO", layout="wide", page_icon="⚽")
+st.set_page_config(page_title="Football Predictor", layout="wide", page_icon="⚽")
 
 # --- MAPOWANIE LIG DLA API ---
 LEAGUE_MAP = {
@@ -35,7 +35,7 @@ def get_live_odds(league_key):
     except:
         return None
 
-# --- DANE BAZOWE (Bez zmian w wartościach) ---
+# --- DANE BAZOWE: BUNDESLIGA ---
 @st.cache_data
 def load_bundesliga():
     data = {
@@ -58,6 +58,7 @@ def load_bundesliga():
     }
     return pd.DataFrame(data)
 
+# --- DANE BAZOWE: PREMIER LEAGUE ---
 @st.cache_data
 def load_premier_league():
     data = {
@@ -78,6 +79,7 @@ def load_premier_league():
     }
     return pd.DataFrame(data)
 
+# --- DANE BAZOWE: LA LIGA ---
 @st.cache_data
 def load_la_liga():
     data = {
@@ -165,8 +167,6 @@ def render_league_ui(df, league_name):
             st.button("🧹 Resetuj", key=f"reset_a_{league_name}", on_click=reset_mods, use_container_width=True)
 
     h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
-    
-    # Obliczenia bazowe
     l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['AxG_F']*w2 + h['T_GF']*w3)
     m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['AxG_A']*w2 + h['T_GA']*w3)
     l_a_r = (a['TxG_F']*w0 + a['A_GF']*w1 + a['AxG_F']*w2 + a['T_GF']*w3)
@@ -195,25 +195,19 @@ def render_league_ui(df, league_name):
     c2.metric("Remis", f"{px:.1%}", f"Kurs: {model_odds[1]:.2f}")
     c3.metric(f"Wygrana {a_team}", f"{p2:.1%}", f"Kurs: {model_odds[2]:.2f}")
 
-    # --- ZMIANA 3: Radar Chart ---
-    st.divider()
-    st.subheader("📊 Profil Taktyczny Zespołów")
-    
-    categories = ['Siła Ataku', 'Solidność Obrony', 'xG Atak', 'xG Obrona']
-    # Normalizacja dla radar chartu (obrona odwrócona, im mniejszy współczynnik tym lepiej)
-    r_h = [h_atk_s, 1/max(h_def_s, 0.1), h['HxG_F']/2, (1/max(h['HxG_A'], 0.1))]
-    r_a = [a_atk_s, 1/max(a_def_s, 0.1), a['TxG_F']/2, (1/max(a['TxG_A'], 0.1))]
-    
-    fig_radar = go.Figure()
-    fig_radar.add_trace(go.Scatterpolar(r=r_h, theta=categories, fill='toself', name=h_team))
-    fig_radar.add_trace(go.Scatterpolar(r=r_a, theta=categories, fill='toself', name=a_team))
-    fig_radar.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0, 3])), showlegend=True)
-    st.plotly_chart(fig_radar, use_container_width=True)
+    st.markdown("#### ⚽ Przewidywana liczba goli (ExG)")
+    ex_h, ex_a = st.columns(2)
+    ex_h.metric(f"ExG {h_team}", f"{lambda_f:.2f}")
+    ex_a.metric(f"ExG {a_team}", f"{mu_f:.2f}")
 
-    # --- TABELA STATYSTYK (Bez zmian w logice) ---
-    col_stats_h, col_stats_a = st.columns(2)
+    st.divider()
+    st.subheader("📊 Porównanie statystyk ze średnią ligową")
+    
     def color_stat(val, avg, is_defense=False):
-        color = "#28a745" if (val >= avg if not is_defense else val <= avg) else "#dc3545"
+        if not is_defense:
+            color = "#28a745" if val >= avg else "#dc3545"
+        else:
+            color = "#28a745" if val <= avg else "#dc3545"
         return f'background-color: {color}; color: white; font-weight: bold'
 
     def create_stat_styled_table(team_data, context, full_df):
@@ -232,8 +226,13 @@ def render_league_ui(df, league_name):
             "Drużyna": [gf, ga, xgf, xga],
             "Średnia ligi": [l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga]
         })
-        return df_stats.style.apply(lambda r: [None, color_stat(r["Drużyna"], r["Średnia ligi"], "Stracone" in r["Statystyka"] or "Obrona" in r["Statystyka"]), None], axis=1).format("{:.2f}", subset=["Drużyna", "Średnia ligi"])
+        def apply_styling(row):
+            is_def = "Stracone" in row["Statystyka"] or "Obrona" in row["Statystyka"]
+            style = color_stat(row["Drużyna"], row["Średnia ligi"], is_def)
+            return [None, style, None]
+        return df_stats.style.apply(apply_styling, axis=1).format("{:.2f}", subset=["Drużyna", "Średnia ligi"])
 
+    col_stats_h, col_stats_a = st.columns(2)
     with col_stats_h:
         st.markdown(f"**Zakres dla {h_team}**")
         ctx_h = st.radio("Wybierz:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_h_{league_name}")
@@ -243,32 +242,45 @@ def render_league_ui(df, league_name):
         ctx_a = st.radio("Wybierz:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_a_{league_name}")
         st.table(create_stat_styled_table(a, ctx_a, df))
 
-    # --- ZMIANA 1: Interaktywna Macierz (Plotly) ---
     st.divider()
-    with st.expander("📊 Interaktywna Macierz Prawdopodobieństwa (Plotly)", expanded=True):
+    st.markdown("### 📊 Porównanie Siły Zespołów")
+    def format_strength(val, is_attack=True):
+        pct = (val - 1.0) * 100
+        color = "green" if (is_attack and val >= 1) or (not is_attack and val <= 1) else "red"
+        return f":{color}[{val:.2f} ({pct:+.0f}%)]"
+
+    st.markdown(f"""
+    | Cecha | {h_team} (Gospodarz) | {a_team} (Gość) |
+    | :--- | :--- | :--- |
+    | **Siła Ataku** | {format_strength(h_atk_s, True)} | {format_strength(a_atk_s, True)} |
+    | **Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |
+    | **Łączny Modyfikator** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |
+    """)
+
+    with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
+        st.subheader("1. Średnie ligowe")
+        st.write(f"Średnia gospodarzy: `{avg_h_gf:.3f}` | Średnia gości: `{avg_a_gf:.3f}`")
+        sc1, sc2 = st.columns(2)
+        with sc1:
+            st.markdown(f"**{h_team}**")
+            st.write(f"🎯 **Bazowa Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
+        with sc2:
+            st.markdown(f"**{a_team}**")
+            st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
+        st.subheader("2. Parametry Poisson (Skorygowane)")
+        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}")
+        st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
+
+    with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
         limit = 8
-        df_matrix = pd.DataFrame(matrix[:limit, :limit], 
-                                index=[f"{i}" for i in range(limit)], 
-                                columns=[f"{i}" for i in range(limit)])
-        fig_hm = px.imshow(df_matrix,
-                        labels=dict(x=f"Gole {a_team}", y=f"Gole {h_team}", color="Prawd."),
-                        text_auto=".2%",
-                        color_continuous_scale='YlGn')
-        st.plotly_chart(fig_hm, use_container_width=True)
+        fig, ax = plt.subplots(figsize=(10, 5))
+        sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
+        plt.xlabel(f"Gole {a_team}") 
+        plt.ylabel(f"Gole {h_team}") 
+        st.pyplot(fig)
 
-    # --- ZMIANA 2: Top 10 Wyników ---
-    st.subheader("🎯 Top 10 Najbardziej Prawdopodobnych Wyników")
-    results = []
-    for x in range(7):
-        for y in range(7):
-            results.append({"Wynik": f"{x}:{y}", "Prawdopodobieństwo": matrix[x, y]})
-    top10 = pd.DataFrame(results).sort_values("Prawdopodobieństwo", ascending=False).head(10)
-    top10["Prawdopodobieństwo"] = top10["Prawdopodobieństwo"].map("{:.2%}".format)
-    st.dataframe(top10, use_container_width=True, hide_index=True)
-
-    # --- RYNKI (BTTS / OU) ---
     st.divider()
-    st.subheader("📉 Analiza Rynków")
+    st.subheader("📉 Analiza Under / Over")
     lines = [1.5, 2.5, 3.5, 4.5]
     ou_cols = st.columns(len(lines))
     for i, line in enumerate(lines):
@@ -276,73 +288,104 @@ def render_league_ui(df, league_name):
         prob_over = 1 - prob_under
         with ou_cols[i]:
             st.markdown(f"**Linia {line}**")
-            st.write(f"🟢 **OVER**: {prob_over:.1%}")
-            st.write(f"🔴 **UNDER**: {prob_under:.1%}")
+            st.write(f"🟢 **OVER**: {prob_over:.1%} (Kurs: {1/max(prob_over, 0.001):.2f})")
+            st.write(f"🔴 **UNDER**: {prob_under:.1%} (Kurs: {1/max(prob_under, 0.001):.2f})")
 
-    # --- ZMIANA 4: Symulacja Monte Carlo (Histogram Plotly) ---
     st.divider()
-    st.subheader("🎲 Symulacja 10 000 Meczy (Monte Carlo)")
-    if st.button(f"🚀 URUCHOM SYMULACJĘ", use_container_width=True, key=f"sim_{league_name}"):
-        n_sim = 10000
-        sim_h = np.random.poisson(lambda_f, n_sim)
-        sim_a = np.random.poisson(mu_f, n_sim)
-        
-        fig_sim = go.Figure()
-        fig_sim.add_trace(go.Histogram(x=sim_h, name=h_team, opacity=0.75, marker_color='#1f77b4'))
-        fig_sim.add_trace(go.Histogram(x=sim_a, name=a_team, opacity=0.75, marker_color='#ff7f0e'))
-        fig_sim.update_layout(barmode='overlay', title_text='Rozkład goli w 10k symulacji', xaxis_title='Liczba goli', yaxis_title='Częstotliwość')
-        st.plotly_chart(fig_sim, use_container_width=True)
-        
-        h_wins = np.sum(sim_h > sim_a) / n_sim
-        draws = np.sum(sim_h == sim_a) / n_sim
-        a_wins = np.sum(sim_h < sim_a) / n_sim
-        st.info(f"Wyniki symulacji: Gospodarz {h_wins:.1%} | Remis {draws:.1%} | Gość {a_wins:.1%}")
+    st.subheader("🥅 Obie Drużyny Strzelą (BTTS)")
+    prob_btts_yes = sum(matrix[x, y] for x in range(1, max_g) for y in range(1, max_g))
+    prob_btts_no = 1 - prob_btts_yes
+    b1, b2 = st.columns(2)
+    with b1:
+        st.write(f"🟢 **TAK**: {prob_btts_yes:.1%} (Kurs: {1/max(prob_btts_yes, 0.001):.2f})")
+    with b2:
+        st.write(f"🔴 **NIE**: {prob_btts_no:.1%} (Kurs: {1/max(prob_btts_no, 0.001):.2f})")
 
-    # --- AI EXPERT ---
-    st.markdown("<br><hr><h2 style='text-align: center;'>💬 Ekspert AI: Analiza</h2>", unsafe_allow_html=True)
+    st.divider()
+    st.subheader("🎲 Symulacja Monte Carlo (1 000 000 scenariuszy)")
+    if st.button(f"🚀 URUCHOM ANALIZĘ 1 000 000 SCENARIUSZY", use_container_width=True, key=f"sim_{league_name}"):
+        with st.status("Trwa symulowanie (1 mln prób)...", expanded=True) as status:
+            n_sim = 1000000
+            sim_h = np.random.poisson(lambda_f, n_sim)
+            sim_a = np.random.poisson(mu_f, n_sim)
+            res_df = pd.DataFrame({'H': sim_h, 'A': sim_a, 'Total': sim_h + sim_a})
+            most_common_row = res_df.groupby(['H', 'A']).size().idxmax()
+            st.success(f"🏆 Najczęstszy wynik w symulacji: **{most_common_row[0]}:{most_common_row[1]}**")
+            fig2, ax2 = plt.subplots(figsize=(10, 4))
+            sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=3, ax=ax2)
+            sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=3, ax=ax2)
+            ax2.set_xlim(-0.5, 8.5) 
+            ax2.set_title("Rozkład prawdopodobieństwa goli")
+            ax2.legend()
+            st.pyplot(fig2, clear_figure=True)
+            status.update(label="Analiza zakończona!", state="complete")
+
+    st.markdown("<br><hr><h2 style='text-align: center;'>💬 Ekspert AI: Analiza Wyników</h2>", unsafe_allow_html=True)
     if "HF_TOKEN" in st.secrets:
         client = InferenceClient(api_key=st.secrets["HF_TOKEN"])
         current_context = f"MECZ: {h_team} vs {a_team}. Szanse: {p1:.1%} / {px:.1%} / {p2:.1%}. ExG: {lambda_f:.2f} - {mu_f:.2f}."
         if f"messages_{league_name}" not in st.session_state: st.session_state[f"messages_{league_name}"] = []
-        for msg in st.session_state[f"messages_{league_name}"]:
-            with st.chat_message(msg["role"]): st.markdown(msg["content"])
-        if prompt := st.chat_input("Zadaj pytanie o taktykę...", key=f"chat_input_{league_name}"):
+        for message in st.session_state[f"messages_{league_name}"]:
+            with st.chat_message(message["role"]): st.markdown(message["content"])
+        if prompt := st.chat_input("Zadaj pytanie...", key=f"chat_input_{league_name}"):
             st.session_state[f"messages_{league_name}"].append({"role": "user", "content": prompt})
             with st.chat_message("user"): st.markdown(prompt)
             with st.chat_message("assistant"):
+                placeholder = st.empty()
                 try:
-                    resp = client.chat.completions.create(model="meta-llama/Meta-Llama-3-8B-Instruct",
+                    response = client.chat.completions.create(
+                        model="meta-llama/Meta-Llama-3-8B-Instruct",
                         messages=[{"role": "system", "content": f"Ekspert piłkarski. Kontekst: {current_context}"}, {"role": "user", "content": prompt}],
-                        max_tokens=500)
-                    full_resp = resp.choices[0].message.content
-                    st.markdown(full_resp)
-                    st.session_state[f"messages_{league_name}"].append({"role": "assistant", "content": full_resp})
-                except Exception as e: st.error(f"Błąd AI: {e}")
-    
-    # --- VALUE BET DETECTOR ---
+                        max_tokens=500
+                    )
+                    full_response = response.choices[0].message.content
+                    placeholder.markdown(full_response)
+                    st.session_state[f"messages_{league_name}"].append({"role": "assistant", "content": full_response})
+                except Exception as e: st.error(f"Błąd AI: {str(e)}")
+    else: st.info("Dodaj HF_TOKEN do Secrets.")
+
+    # --- MODUŁ: VALUE BET DETECTOR ---
     st.divider()
-    st.markdown("<h2 style='text-align: center;'>⚖️ Value Bet Detector</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>⚖️ Porównanie z Rynkiem (Value Bet Detector)</h2>", unsafe_allow_html=True)
+    
     odds_data = get_live_odds(LEAGUE_MAP.get(league_name))
     if odds_data:
         match = next((m for m in odds_data if h_team in m['home_team'] or a_team in m['away_team']), None)
+        
         if match:
             try:
                 bookie = match['bookmakers'][0]
                 mkt = bookie['markets'][0]['outcomes']
-                l1 = next(o['price'] for o in mkt if o['name'] == match['home_team'])
-                l2 = next(o['price'] for o in mkt if o['name'] == match['away_team'])
-                lx = next(o['price'] for o in mkt if o['name'] == 'Draw')
+                
+                live_1 = next(o['price'] for o in mkt if o['name'] == match['home_team'])
+                live_2 = next(o['price'] for o in mkt if o['name'] == match['away_team'])
+                live_x = next(o['price'] for o in mkt if o['name'] == 'Draw')
                 
                 compare_df = pd.DataFrame({
                     "Typ": [f"1 ({h_team})", "X (Remis)", f"2 ({a_team})"],
                     "Twoje Prawd.": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"],
                     "Twój Kurs": [model_odds[0], model_odds[1], model_odds[2]],
-                    "Kurs Bukmachera": [l1, lx, l2],
-                    "Value (%)": [(p1 * l1 - 1), (px * lx - 1), (p2 * l2 - 1)]
+                    "Kurs Bukmachera": [live_1, live_x, live_2],
+                    "Value (%)": [(p1 * live_1 - 1), (px * live_x - 1), (p2 * live_2 - 1)]
                 })
-                st.table(compare_df.style.applymap(lambda v: f'background-color: {"#28a745" if v > 0.05 else "#dc3545" if v < -0.05 else "transparent"}; color: white', subset=['Value (%)']).format("{:.2f}", subset=['Twój Kurs', 'Kurs Bukmachera']).format("{:.2%}", subset=['Value (%)']))
-            except: st.info("Błąd parsowania kursów.")
-        else: st.info("Brak aktywnych kursów.")
+
+                def style_value(val):
+                    color = '#28a745' if val > 0.05 else '#dc3545' if val < -0.05 else 'transparent'
+                    return f'background-color: {color}; color: white; font-weight: bold'
+
+                st.markdown(f"**Źródło danych:** {bookie['title']} (Aktualizacja: {match['commence_time'][:10]})")
+                st.table(compare_df.style.applymap(style_value, subset=['Value (%)'])
+                         .format("{:.2f}", subset=['Twój Kurs', 'Kurs Bukmachera']) # Tu skrócono kursy
+                         .format("{:.2%}", subset=['Value (%)']))
+                
+                if any((p1*live_1-1) > 0.05 for _ in [1]):
+                     st.success("🎯 Sugestia: Znaleziono matematyczną przewagę nad bukmacherem!")
+            except Exception:
+                st.info("Nie udało się sparsować kursów dla tego meczu.")
+        else:
+            st.info("Brak aktywnych kursów w API dla wybranego zestawienia.")
+    else:
+        st.warning("Nie udało się pobrać kursów. Sprawdź ODDS_API_KEY w Secrets.")
 
 # Wywołanie UI
 with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
