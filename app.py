@@ -49,7 +49,7 @@ def load_bundesliga():
         'HxG_F': [3.43, 2.00, 2.07, 2.11, 2.65, 2.26, 1.69, 1.86, 1.31, 1.51, 1.59, 1.46, 1.51, 1.92, 1.00, 1.60, 1.52, 1.47],
         'HxG_A': [1.04, 1.23, 1.28, 1.35, 1.51, 0.92, 1.26, 1.07, 1.67, 1.31, 1.58, 1.73, 1.65, 1.53, 1.54, 1.36, 1.84, 2.06],
         'TxG_F': [3.07, 1.85, 1.85, 1.96, 2.20, 2.02, 1.56, 1.42, 1.25, 1.42, 1.32, 1.43, 1.45, 1.63, 0.97, 1.32, 1.41, 1.36],
-        'TxG_A': [1.13, 1.32, 1.59, 1.40, 1.42, 1.27, 1.61, 1.52, 1.88, 1.46, 1.72, 1.63, 1.89, 1.90, 1.83, 1.72, 1.96, 2.22],
+        'TxG_A': [1.13, 1.32, 1.59, 1.40, 1.42, 1.27, 1.61, 1.52, 1.88, 1.46, 1.72, 1.63, 1.63, 1.90, 1.83, 1.72, 1.96, 2.22],
         'A_GF': [3.33, 1.92, 1.83, 2.25, 1.58, 1.67, 2.17, 1.00, 1.18, 1.00, 0.64, 1.08, 1.00, 1.17, 0.77, 0.92, 1.17, 0.75],
         'A_GA': [0.92, 1.17, 1.42, 1.67, 1.33, 1.50, 2.58, 2.08, 2.00, 1.75, 1.73, 1.50, 1.83, 2.08, 1.69, 1.92, 2.25, 2.17],
         'AxG_F': [2.72, 1.70, 1.62, 1.80, 1.76, 1.77, 1.43, 1.06, 1.18, 1.06, 1.00, 1.40, 1.39, 1.34, 0.95, 1.04, 1.30, 1.25],
@@ -122,7 +122,7 @@ options = [i for i in range(0, 105, 5)]
 v0 = st.sidebar.selectbox("🎯 xG Sezon D/W %", options, index=options.index(40), key=f"w0_{st.session_state.reset_counter}")
 v1 = st.sidebar.selectbox("⚽ Gole Sezon D/W %", options, index=options.index(25), key=f"w1_{st.session_state.reset_counter}")
 v2 = st.sidebar.selectbox("📊 xG Cały Sezon %", options, index=options.index(20), key=f"w2_{st.session_state.reset_counter}")
-v3 = st.sidebar.selectbox("📉 Gole Cały Sezon %", options, index=options.index(15), key=f"w3_{st.session_state.reset_counter}")
+v3 = st.sidebar.selectbox("📉 Gole Cały Sezon %", options, options.index(15), key=f"w3_{st.session_state.reset_counter}")
 
 if v0 + v1 + v2 + v3 != 100:
     st.sidebar.error("Suma wag musi wynosić 100%!")
@@ -152,6 +152,7 @@ def render_league_ui(df, league_name):
             h_p = st.select_slider("POGODA", options=mod_range, value=0, key=f"h_p_{league_name}_{m_key}")
             h_total_mod = (h_k + h_f + h_s + h_p) / 100
             st.button("🧹 Resetuj", key=f"reset_h_{league_name}", on_click=reset_mods, use_container_width=True)
+            
     with col_b:
         a_team = st.selectbox(f"Gość", df['Team'], index=1, key=f"a_{league_name}")
         a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
@@ -166,7 +167,52 @@ def render_league_ui(df, league_name):
             a_total_mod = (a_k + a_f + a_s + a_p) / 100
             st.button("🧹 Resetuj", key=f"reset_a_{league_name}", on_click=reset_mods, use_container_width=True)
 
-    h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
+    # --- NOWA SEKCJA: BONUS FORMY ---
+    st.divider()
+    st.markdown("### 📈 Bonus Formy (Dane z ostatniego okresu)")
+    
+    def calculate_form_bonus(team_name, base_gf, base_ga, base_xf, base_xa, key_prefix):
+        st.markdown(f"**Dane dla {team_name}**")
+        c1, c2, c3, c4 = st.columns(4)
+        last_gf = c1.number_input("Gole Strzelone", value=float(base_gf), step=0.1, key=f"{key_prefix}_gf")
+        last_ga = c2.number_input("Gole Stracone", value=float(base_ga), step=0.1, key=f"{key_prefix}_ga")
+        last_xf = c3.number_input("xG (Kreacja)", value=float(base_xf), step=0.1, key=f"{key_prefix}_xf")
+        last_xa = c4.number_input("xGA (Dopuszczone)", value=float(base_xa), step=0.1, key=f"{key_prefix}_xa")
+        
+        # Trend Kreacji (70%)
+        trend_kreacji = (last_xf - base_xf) / max(base_xf, 0.1)
+        # Skuteczność (30%)
+        skutecznosc = (last_gf - last_xf) / max(last_xf, 0.1)
+        # Surowy bonus ataku
+        raw_atk = (trend_kreacji * 0.7) + (skutecznosc * 0.3)
+        # Bonus po tłumieniu (x0.25)
+        final_atk_bonus = raw_atk * 0.25
+        
+        # Trend Defensywny (70%)
+        trend_def = (base_xa - last_xa) / max(base_xa, 0.1)
+        # Forma Bramkarza (30%)
+        forma_gk = (last_xa - last_ga) / max(last_xa, 0.1)
+        # Surowy bonus obrony
+        raw_def = (trend_def * 0.7) + (forma_gk * 0.3)
+        # Bonus po tłumieniu (x0.25)
+        final_def_bonus = raw_def * 0.25
+        
+        return final_atk_bonus, final_def_bonus
+
+    h_data_row = df[df['Team'] == h_team].iloc[0]
+    a_data_row = df[df['Team'] == a_team].iloc[0]
+
+    col_form_h, col_form_a = st.columns(2)
+    with col_form_h:
+        h_bonus_atk, h_bonus_def = calculate_form_bonus(h_team, h_data_row['H_GF'], h_data_row['H_GA'], h_data_row['HxG_F'], h_data_row['HxG_A'], f"h_form_{league_name}")
+        st.info(f"Bonus Atak: {h_bonus_atk:+.1%} | Bonus Obrona: {h_bonus_def:+.1%}")
+        
+    with col_form_a:
+        a_bonus_atk, a_bonus_def = calculate_form_bonus(a_team, a_data_row['A_GF'], a_data_row['A_GA'], a_data_row['AxG_F'], a_data_row['AxG_A'], f"a_form_{league_name}")
+        st.info(f"Bonus Atak: {a_bonus_atk:+.1%} | Bonus Obrona: {a_bonus_def:+.1%}")
+
+    # --- OBLICZENIA POISSONA ---
+    h, a = h_data_row, a_data_row
     l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['AxG_F']*w2 + h['T_GF']*w3)
     m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['AxG_A']*w2 + h['T_GA']*w3)
     l_a_r = (a['TxG_F']*w0 + a['A_GF']*w1 + a['AxG_F']*w2 + a['T_GF']*w3)
@@ -175,8 +221,9 @@ def render_league_ui(df, league_name):
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 
-    lambda_f = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod)
-    mu_f = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod)
+    # Aplikacja Bonusów Formy do Lambdy
+    lambda_f = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod + h_bonus_atk + a_bonus_def)
+    mu_f = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod + a_bonus_atk + h_bonus_def)
 
     max_g = 12
     matrix = np.zeros((max_g, max_g))
@@ -186,7 +233,7 @@ def render_league_ui(df, league_name):
             matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_f, mu_f, fixed_rho)
     matrix /= matrix.sum()
 
-    p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
+    p1, px, p2 = np.sum(np.tril(matrix, -1).T), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1).T)
     model_odds = [1/max(p1, 0.001), 1/max(px, 0.001), 1/max(p2, 0.001)]
 
     st.divider()
@@ -254,7 +301,8 @@ def render_league_ui(df, league_name):
     | :--- | :--- | :--- |
     | **Siła Ataku** | {format_strength(h_atk_s, True)} | {format_strength(a_atk_s, True)} |
     | **Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |
-    | **Łączny Modyfikator** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |
+    | **Bonus Formy (A/O)** | **{h_bonus_atk:+.1%} / {h_bonus_def:+.1%}** | **{a_bonus_atk:+.1%} / {a_bonus_def:+.1%}** |
+    | **Łączny Mod. Zewnętrzny** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |
     """)
 
     with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
@@ -267,9 +315,9 @@ def render_league_ui(df, league_name):
         with sc2:
             st.markdown(f"**{a_team}**")
             st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
-        st.subheader("2. Parametry Poisson (Skorygowane)")
-        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}")
-        st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
+        st.subheader("2. Parametry Poisson (Skorygowane o Mod + Formę)")
+        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 + {h_total_mod + h_bonus_atk + a_bonus_def:+.2f}) = {lambda_f:.3f}")
+        st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 + {a_total_mod + a_bonus_atk + h_bonus_def:+.2f}) = {mu_f:.3f}")
 
     with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
         limit = 8
@@ -375,7 +423,7 @@ def render_league_ui(df, league_name):
 
                 st.markdown(f"**Źródło danych:** {bookie['title']} (Aktualizacja: {match['commence_time'][:10]})")
                 st.table(compare_df.style.applymap(style_value, subset=['Value (%)'])
-                         .format("{:.2f}", subset=['Twój Kurs', 'Kurs Bukmachera']) # Tu skrócono kursy
+                         .format("{:.2f}", subset=['Twój Kurs', 'Kurs Bukmachera'])
                          .format("{:.2%}", subset=['Value (%)']))
                 
                 if any((p1*live_1-1) > 0.05 for _ in [1]):
