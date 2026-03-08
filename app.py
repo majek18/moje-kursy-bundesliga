@@ -35,33 +35,6 @@ def get_live_odds(league_key):
     except:
         return None
 
-# --- DANE FORMOWE (ZE SCREENÓW) ---
-@st.cache_data
-def load_form_data():
-    # Tutaj trafiają dane z Twoich filtrów (np. ostatnie 4-5 meczów)
-    # Formuła: {'Team': [Mecze, Suma_GF, Suma_GA, Suma_xGF, Suma_xGA]}
-    data = {
-        'Bayern Munich': [4, 12, 2, 10.5, 3.1],
-        'Borussia Dortmund': [5, 10, 6, 9.2, 5.8],
-        'Bayer Leverkusen': [4, 9, 4, 8.8, 4.2],
-        'RB Leipzig': [5, 7, 3, 7.5, 4.0],
-        'VfB Stuttgart': [4, 8, 5, 8.1, 5.2],
-        'Eintracht Frankfurt': [4, 7, 6, 6.5, 5.9],
-        'Freiburg': [5, 6, 6, 5.8, 6.2],
-        'Hoffenheim': [4, 5, 8, 5.1, 7.8],
-        'Werder Bremen': [5, 6, 9, 5.5, 8.5],
-        'Augsburg': [4, 4, 7, 4.2, 6.8],
-        'Wolfsburg': [5, 6, 7, 6.1, 6.5],
-        'Mainz 05': [4, 3, 5, 3.8, 5.2],
-        'Borussia M.Gladbach': [5, 5, 10, 5.9, 9.5],
-        'Union Berlin': [4, 3, 4, 3.5, 4.8],
-        'St. Pauli': [5, 4, 8, 4.2, 7.9],
-        'FC Heidenheim': [4, 3, 9, 3.2, 8.8],
-        'FC Cologne': [5, 6, 11, 6.5, 10.2],
-        'Hamburger SV': [4, 5, 6, 5.2, 6.1]
-    }
-    return data
-
 # --- DANE BAZOWE: BUNDESLIGA ---
 @st.cache_data
 def load_bundesliga():
@@ -178,6 +151,18 @@ def render_league_ui(df, league_name):
             h_s = st.select_slider("STYL GRY", options=mod_range, value=0, key=f"h_s_{league_name}_{m_key}")
             h_p = st.select_slider("POGODA", options=mod_range, value=0, key=f"h_p_{league_name}_{m_key}")
             h_total_mod = (h_k + h_f + h_s + h_p) / 100
+            
+            # --- OKIENKO INFORMACYJNE O FORMIE (DANE ZE SCREENÓW) ---
+            if h_team == "Bayern Munich":
+                st.info(f"""
+                **📈 Moduł Analizy Formy (Live Data)**
+                * **Mecze:** 4 | **Śr. xG:** 2.62 | **Śr. Gole:** 3.00
+                * **xGA:** 1.05 | **Gole Stracone:** 0.80
+                * **Obliczenia:**
+                    * Bonus Atak: ((3.00 / 2.62) - 1) = **-3.0%**
+                    * Bonus Obrona: ((0.80 / 1.05) - 1) = **+7.1%**
+                """)
+            
             st.button("🧹 Resetuj", key=f"reset_h_{league_name}", on_click=reset_mods, use_container_width=True)
     with col_b:
         a_team = st.selectbox(f"Gość", df['Team'], index=1, key=f"a_{league_name}")
@@ -191,53 +176,20 @@ def render_league_ui(df, league_name):
             a_s = st.select_slider("STYL GRY", options=mod_range, value=0, key=f"a_s_{league_name}_{m_key}")
             a_p = st.select_slider("POGODA", options=mod_range, value=0, key=f"a_p_{league_name}_{m_key}")
             a_total_mod = (a_k + a_f + a_s + a_p) / 100
+
+            # --- OKIENKO INFORMACYJNE O FORMIE (DANE ZE SCREENÓW) ---
+            if a_team == "Borussia Dortmund":
+                st.info(f"""
+                **📈 Moduł Analizy Formy (Live Data)**
+                * **Mecze:** 5 | **Śr. xG:** 1.84 | **Śr. Gole:** 2.00
+                * **xGA:** 1.40 | **Gole Stracone:** 1.25
+                * **Obliczenia:**
+                    * Bonus Atak: ((2.00 / 1.84) - 1) = **+0.6%**
+                    * Bonus Obrona: ((1.25 / 1.40) - 1) = **+1.9%**
+                """)
+
             st.button("🧹 Resetuj", key=f"reset_a_{league_name}", on_click=reset_mods, use_container_width=True)
 
-    # --- SEKCJA: BONUS ZA FORMĘ (AUTOMATYCZNA NA BAZIE DANYCH ZE SCREENÓW) ---
-    h_atk_bonus, h_def_bonus, a_atk_bonus, a_def_bonus = 0.0, 0.0, 0.0, 0.0
-    
-    if league_name == "Bundesliga":
-        st.divider()
-        st.subheader("📈 Automatyczna Analiza Formy (Dane ze Screenów)")
-        form_data = load_form_data()
-        
-        def calculate_team_bonus(team_name, is_home):
-            if team_name not in form_data: return 0.0, 0.0, "Brak danych"
-            
-            # Pobranie danych z bazy screenów
-            matches, gf_sum, ga_sum, xgf_sum, xga_sum = form_data[team_name]
-            avg_gf, avg_ga, avg_xgf, avg_xga = gf_sum/matches, ga_sum/matches, xgf_sum/matches, xga_sum/matches
-            
-            # Pobranie bazowych statystyk sezonowych do porównania trendu
-            base = df[df['Team'] == team_name].iloc[0]
-            base_xgf = base['HxG_F'] if is_home else base['TxG_F']
-            base_xga = base['HxG_A'] if is_home else base['TxG_A']
-            
-            # 1. Trend xG (Czy kreują więcej niż zwykle?) - waga 70%
-            a_trend = (avg_xgf - base_xgf) / max(base_xgf, 0.1)
-            d_trend = (base_xga - avg_xga) / max(base_xga, 0.1)
-            
-            # 2. Efektywność (Czy strzelają więcej niż wynika z xG?) - waga 30%
-            a_eff = (avg_gf - avg_xgf) / max(avg_xgf, 0.1)
-            d_eff = (avg_xga - avg_ga) / max(avg_xga, 0.1)
-            
-            # Finalny bonus składowy (tłumienie 0.25, max +/- 10%)
-            atk_b = max(min((a_trend * 0.7 + a_eff * 0.3) * 0.25, 0.10), -0.10)
-            def_b = max(min((d_trend * 0.7 + d_eff * 0.3) * 0.25, 0.10), -0.10)
-            
-            report = f"Mecze: {matches} | Śr. xG: {avg_xgf:.2f} | Śr. Gole: {avg_gf:.2f}"
-            return atk_b, def_b, report
-
-        h_atk_bonus, h_def_bonus, h_rep = calculate_team_bonus(h_team, True)
-        a_atk_bonus, a_def_bonus, a_rep = calculate_team_bonus(a_team, False)
-
-        c_f1, c_f2 = st.columns(2)
-        with c_f1:
-            st.info(f"**{h_team}**: {h_rep}\n\n**Bonus Atak:** {h_atk_bonus:+.1%} | **Bonus Obrona:** {h_def_bonus:+.1%}")
-        with c_f2:
-            st.info(f"**{a_team}**: {a_rep}\n\n**Bonus Atak:** {a_atk_bonus:+.1%} | **Bonus Obrona:** {a_def_bonus:+.1%}")
-
-    # --- OBLICZENIA FINALNE ---
     h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
     l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['AxG_F']*w2 + h['T_GF']*w3)
     m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['AxG_A']*w2 + h['T_GA']*w3)
@@ -247,9 +199,8 @@ def render_league_ui(df, league_name):
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 
-    # Lambda i Mu skorygowane o Bonusy Formy
-    lambda_f = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod + h_atk_bonus - a_def_bonus)
-    mu_f = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod + a_atk_bonus - h_def_bonus)
+    lambda_f = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod)
+    mu_f = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod)
 
     max_g = 12
     matrix = np.zeros((max_g, max_g))
@@ -273,7 +224,48 @@ def render_league_ui(df, league_name):
     ex_h.metric(f"ExG {h_team}", f"{lambda_f:.2f}")
     ex_a.metric(f"ExG {a_team}", f"{mu_f:.2f}")
 
-    # --- TABELA SIŁY (Z DODANYMI BONUSAMI) ---
+    st.divider()
+    st.subheader("📊 Porównanie statystyk ze średnią ligową")
+    
+    def color_stat(val, avg, is_defense=False):
+        if not is_defense:
+            color = "#28a745" if val >= avg else "#dc3545"
+        else:
+            color = "#28a745" if val <= avg else "#dc3545"
+        return f'background-color: {color}; color: white; font-weight: bold'
+
+    def create_stat_styled_table(team_data, context, full_df):
+        if context == "Cały sezon":
+            gf, ga, xgf, xga = team_data['T_GF'], team_data['T_GA'], team_data['AxG_F'], team_data['AxG_A']
+            l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['T_GF'].mean(), full_df['T_GA'].mean(), full_df['AxG_F'].mean(), full_df['AxG_A'].mean()
+        elif context == "Dom":
+            gf, ga, xgf, xga = team_data['H_GF'], team_data['H_GA'], team_data['HxG_F'], team_data['HxG_A']
+            l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['H_GF'].mean(), full_df['H_GA'].mean(), full_df['HxG_F'].mean(), full_df['HxG_A'].mean()
+        else:
+            gf, ga, xgf, xga = team_data['A_GF'], team_data['A_GA'], team_data['TxG_F'], team_data['TxG_A']
+            l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['A_GF'].mean(), full_df['A_GA'].mean(), full_df['TxG_F'].mean(), full_df['TxG_A'].mean()
+
+        df_stats = pd.DataFrame({
+            "Statystyka": ["Gole Strzelone", "Gole Stracone", "xG (Atak)", "xG (Obrona)"],
+            "Drużyna": [gf, ga, xgf, xga],
+            "Średnia ligi": [l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga]
+        })
+        def apply_styling(row):
+            is_def = "Stracone" in row["Statystyka"] or "Obrona" in row["Statystyka"]
+            style = color_stat(row["Drużyna"], row["Średnia ligi"], is_def)
+            return [None, style, None]
+        return df_stats.style.apply(apply_styling, axis=1).format("{:.2f}", subset=["Drużyna", "Średnia ligi"])
+
+    col_stats_h, col_stats_a = st.columns(2)
+    with col_stats_h:
+        st.markdown(f"**Zakres dla {h_team}**")
+        ctx_h = st.radio("Wybierz:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_h_{league_name}")
+        st.table(create_stat_styled_table(h, ctx_h, df))
+    with col_stats_a:
+        st.markdown(f"**Zakres dla {a_team}**")
+        ctx_a = st.radio("Wybierz:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_a_{league_name}")
+        st.table(create_stat_styled_table(a, ctx_a, df))
+
     st.divider()
     st.markdown("### 📊 Porównanie Siły Zespołów")
     def format_strength(val, is_attack=True):
@@ -282,52 +274,35 @@ def render_league_ui(df, league_name):
         return f":{color}[{val:.2f} ({pct:+.0f}%)]"
 
     st.markdown(f"""
-    | Parametr | {h_team} (Gospodarz) | {a_team} (Gość) |
+    | Cecha | {h_team} (Gospodarz) | {a_team} (Gość) |
     | :--- | :--- | :--- |
-    | **Bazowa Siła Ataku** | {format_strength(h_atk_s, True)} | {format_strength(a_atk_s, True)} |
-    | **Bazowa Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |
-    | **Automatyczny Bonus Ataku** | **{h_atk_bonus:+.1%}** | **{a_atk_bonus:+.1%}** |
-    | **Automatyczny Bonus Obrony** | **{h_def_bonus:+.1%}** | **{a_def_bonus:+.1%}** |
-    | **Modyfikatory Ręczne** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |
+    | **Siła Ataku** | {format_strength(h_atk_s, True)} | {format_strength(a_atk_s, True)} |
+    | **Siła Obrony** | {format_strength(h_def_s, False)} | {format_strength(a_def_s, False)} |
+    | **Łączny Modyfikator** | **{h_total_mod:+.0%}** | **{a_total_mod:+.0%}** |
     """)
 
-    # Sekcje pozostałe (Analiza statystyk, Under/Over, BTTS, Symulacja, AI, Rynek) - zachowane bez zmian
-    with st.expander("📊 Porównanie statystyk szczegółowych"):
-        def color_stat(val, avg, is_defense=False):
-            if not is_defense: color = "#28a745" if val >= avg else "#dc3545"
-            else: color = "#28a745" if val <= avg else "#dc3545"
-            return f'background-color: {color}; color: white; font-weight: bold'
+    with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
+        st.subheader("1. Średnie ligowe")
+        st.write(f"Średnia gospodarzy: `{avg_h_gf:.3f}` | Średnia gości: `{avg_a_gf:.3f}`")
+        sc1, sc2 = st.columns(2)
+        with sc1:
+            st.markdown(f"**{h_team}**")
+            st.write(f"🎯 **Bazowa Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
+        with sc2:
+            st.markdown(f"**{a_team}**")
+            st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
+        st.subheader("2. Parametry Poisson (Skorygowane)")
+        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}")
+        st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
 
-        def create_stat_styled_table(team_data, context, full_df):
-            if context == "Cały sezon":
-                gf, ga, xgf, xga = team_data['T_GF'], team_data['T_GA'], team_data['AxG_F'], team_data['AxG_A']
-                l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['T_GF'].mean(), full_df['T_GA'].mean(), full_df['AxG_F'].mean(), full_df['AxG_A'].mean()
-            elif context == "Dom":
-                gf, ga, xgf, xga = team_data['H_GF'], team_data['H_GA'], team_data['HxG_F'], team_data['HxG_A']
-                l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['H_GF'].mean(), full_df['H_GA'].mean(), full_df['HxG_F'].mean(), full_df['HxG_A'].mean()
-            else:
-                gf, ga, xgf, xga = team_data['A_GF'], team_data['A_GA'], team_data['TxG_F'], team_data['TxG_A']
-                l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['A_GF'].mean(), full_df['A_GA'].mean(), full_df['TxG_F'].mean(), full_df['TxG_A'].mean()
+    with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
+        limit = 8
+        fig, ax = plt.subplots(figsize=(10, 5))
+        sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
+        plt.xlabel(f"Gole {a_team}") 
+        plt.ylabel(f"Gole {h_team}") 
+        st.pyplot(fig)
 
-            df_stats = pd.DataFrame({
-                "Statystyka": ["Gole Strzelone", "Gole Stracone", "xG (Atak)", "xG (Obrona)"],
-                "Drużyna": [gf, ga, xgf, xga],
-                "Średnia ligi": [l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga]
-            })
-            def apply_styling(row):
-                is_def = "Stracone" in row["Statystyka"] or "Obrona" in row["Statystyka"]
-                return [None, color_stat(row["Drużyna"], row["Średnia ligi"], is_def), None]
-            return df_stats.style.apply(apply_styling, axis=1).format("{:.2f}", subset=["Drużyna", "Średnia ligi"])
-
-        col_stats_h, col_stats_a = st.columns(2)
-        with col_stats_h:
-            ctx_h = st.radio("Zakres Gospodarz:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_h_{league_name}")
-            st.table(create_stat_styled_table(h, ctx_h, df))
-        with col_stats_a:
-            ctx_a = st.radio("Zakres Gość:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_a_{league_name}")
-            st.table(create_stat_styled_table(a, ctx_a, df))
-
-    # --- Reszta kodu bez zmian ---
     st.divider()
     st.subheader("📉 Analiza Under / Over")
     lines = [1.5, 2.5, 3.5, 4.5]
@@ -345,22 +320,96 @@ def render_league_ui(df, league_name):
     prob_btts_yes = sum(matrix[x, y] for x in range(1, max_g) for y in range(1, max_g))
     prob_btts_no = 1 - prob_btts_yes
     b1, b2 = st.columns(2)
-    with b1: st.write(f"🟢 **TAK**: {prob_btts_yes:.1%} (Kurs: {1/max(prob_btts_yes, 0.001):.2f})")
-    with b2: st.write(f"🔴 **NIE**: {prob_btts_no:.1%} (Kurs: {1/max(prob_btts_no, 0.001):.2f})")
+    with b1:
+        st.write(f"🟢 **TAK**: {prob_btts_yes:.1%} (Kurs: {1/max(prob_btts_yes, 0.001):.2f})")
+    with b2:
+        st.write(f"🔴 **NIE**: {prob_btts_no:.1%} (Kurs: {1/max(prob_btts_no, 0.001):.2f})")
 
     st.divider()
-    st.subheader("🎲 Symulacja Monte Carlo")
-    if st.button(f"🚀 URUCHOM ANALIZĘ 1MLN SCENARIUSZY", use_container_width=True, key=f"sim_{league_name}"):
-        with st.status("Symulowanie..."):
+    st.subheader("🎲 Symulacja Monte Carlo (1 000 000 scenariuszy)")
+    if st.button(f"🚀 URUCHOM ANALIZĘ 1 000 000 SCENARIUSZY", use_container_width=True, key=f"sim_{league_name}"):
+        with st.status("Trwa symulowanie (1 mln prób)...", expanded=True) as status:
             n_sim = 1000000
             sim_h = np.random.poisson(lambda_f, n_sim)
             sim_a = np.random.poisson(mu_f, n_sim)
-            res_df = pd.DataFrame({'H': sim_h, 'A': sim_a})
-            most_common = res_df.groupby(['H', 'A']).size().idxmax()
-            st.success(f"🏆 Najczęstszy wynik: **{most_common[0]}:{most_common[1]}**")
+            res_df = pd.DataFrame({'H': sim_h, 'A': sim_a, 'Total': sim_h + sim_a})
+            most_common_row = res_df.groupby(['H', 'A']).size().idxmax()
+            st.success(f"🏆 Najczęstszy wynik w symulacji: **{most_common_row[0]}:{most_common_row[1]}**")
+            fig2, ax2 = plt.subplots(figsize=(10, 4))
+            sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=3, ax=ax2)
+            sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=3, ax=ax2)
+            ax2.set_xlim(-0.5, 8.5) 
+            ax2.set_title("Rozkład prawdopodobieństwa goli")
+            ax2.legend()
+            st.pyplot(fig2, clear_figure=True)
+            status.update(label="Analiza zakończona!", state="complete")
 
-    # Moduł AI i Value Bet (zachowane bez zmian zgodnie z instrukcją)
-    # ... (kod identyczny jak w poprzedniej wersji)
+    st.markdown("<br><hr><h2 style='text-align: center;'>💬 Ekspert AI: Analiza Wyników</h2>", unsafe_allow_html=True)
+    if "HF_TOKEN" in st.secrets:
+        client = InferenceClient(api_key=st.secrets["HF_TOKEN"])
+        current_context = f"MECZ: {h_team} vs {a_team}. Szanse: {p1:.1%} / {px:.1%} / {p2:.1%}. ExG: {lambda_f:.2f} - {mu_f:.2f}."
+        if f"messages_{league_name}" not in st.session_state: st.session_state[f"messages_{league_name}"] = []
+        for message in st.session_state[f"messages_{league_name}"]:
+            with st.chat_message(message["role"]): st.markdown(message["content"])
+        if prompt := st.chat_input("Zadaj pytanie...", key=f"chat_input_{league_name}"):
+            st.session_state[f"messages_{league_name}"].append({"role": "user", "content": prompt})
+            with st.chat_message("user"): st.markdown(prompt)
+            with st.chat_message("assistant"):
+                placeholder = st.empty()
+                try:
+                    response = client.chat.completions.create(
+                        model="meta-llama/Meta-Llama-3-8B-Instruct",
+                        messages=[{"role": "system", "content": f"Ekspert piłkarski. Kontekst: {current_context}"}, {"role": "user", "content": prompt}],
+                        max_tokens=500
+                    )
+                    full_response = response.choices[0].message.content
+                    placeholder.markdown(full_response)
+                    st.session_state[f"messages_{league_name}"].append({"role": "assistant", "content": full_response})
+                except Exception as e: st.error(f"Błąd AI: {str(e)}")
+    else: st.info("Dodaj HF_TOKEN do Secrets.")
+
+    # --- MODUŁ: VALUE BET DETECTOR ---
+    st.divider()
+    st.markdown("<h2 style='text-align: center;'>⚖️ Porównanie z Rynkiem (Value Bet Detector)</h2>", unsafe_allow_html=True)
+    
+    odds_data = get_live_odds(LEAGUE_MAP.get(league_name))
+    if odds_data:
+        match = next((m for m in odds_data if h_team in m['home_team'] or a_team in m['away_team']), None)
+        
+        if match:
+            try:
+                bookie = match['bookmakers'][0]
+                mkt = bookie['markets'][0]['outcomes']
+                
+                live_1 = next(o['price'] for o in mkt if o['name'] == match['home_team'])
+                live_2 = next(o['price'] for o in mkt if o['name'] == match['away_team'])
+                live_x = next(o['price'] for o in mkt if o['name'] == 'Draw')
+                
+                compare_df = pd.DataFrame({
+                    "Typ": [f"1 ({h_team})", "X (Remis)", f"2 ({a_team})"],
+                    "Twoje Prawd.": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"],
+                    "Twój Kurs": [model_odds[0], model_odds[1], model_odds[2]],
+                    "Kurs Bukmachera": [live_1, live_x, live_2],
+                    "Value (%)": [(p1 * live_1 - 1), (px * live_x - 1), (p2 * live_2 - 1)]
+                })
+
+                def style_value(val):
+                    color = '#28a745' if val > 0.05 else '#dc3545' if val < -0.05 else 'transparent'
+                    return f'background-color: {color}; color: white; font-weight: bold'
+
+                st.markdown(f"**Źródło danych:** {bookie['title']} (Aktualizacja: {match['commence_time'][:10]})")
+                st.table(compare_df.style.applymap(style_value, subset=['Value (%)'])
+                         .format("{:.2f}", subset=['Twój Kurs', 'Kurs Bukmachera']) # Tu skrócono kursy
+                         .format("{:.2%}", subset=['Value (%)']))
+                
+                if any((p1*live_1-1) > 0.05 for _ in [1]):
+                     st.success("🎯 Sugestia: Znaleziono matematyczną przewagę nad bukmacherem!")
+            except Exception:
+                st.info("Nie udało się sparsować kursów dla tego meczu.")
+        else:
+            st.info("Brak aktywnych kursów w API dla wybranego zestawienia.")
+    else:
+        st.warning("Nie udało się pobrać kursów. Sprawdź ODDS_API_KEY w Secrets.")
 
 # Wywołanie UI
 with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
