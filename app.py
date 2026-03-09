@@ -145,7 +145,6 @@ def load_la_liga_recent_bonus_data():
     recent_df['recent_xGA_pm'] = recent_df['recent_xGA_total'] / recent_df['recent_xg_matches']
     return recent_df
 
-# --- FUNKCJA KOREKTY ---
 def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 0 and y == 0:
         return 1 - (l_h * m_a * rho)
@@ -157,7 +156,6 @@ def dixon_coles_adjustment(x, y, l_h, m_a, rho):
         return 1 - rho
     return 1
 
-# --- MAPA DANYCH RECENT WG LIG ---
 def get_recent_bonus_df(league_name):
     if league_name == "Bundesliga":
         return load_bundesliga_recent_bonus_data()
@@ -167,7 +165,6 @@ def get_recent_bonus_df(league_name):
         return load_la_liga_recent_bonus_data()
     return None
 
-# --- BONUSY ZA OSTATNIE MECZE ---
 def calculate_recent_bonus(team_name, base_row, recent_df):
     eps = 1e-9
     team_recent = recent_df[recent_df['Team'] == team_name]
@@ -175,14 +172,14 @@ def calculate_recent_bonus(team_name, base_row, recent_df):
     if team_recent.empty:
         return {
             "team": team_name,
-            "season_GF": base_row['T_GF'],
-            "season_GA": base_row['T_GA'],
-            "season_xG": base_row['TxG_F'],
-            "season_xGA": base_row['TxG_A'],
-            "recent_GF_pm": base_row['T_GF'],
-            "recent_GA_pm": base_row['T_GA'],
-            "recent_xG_pm": base_row['TxG_F'],
-            "recent_xGA_pm": base_row['TxG_A'],
+            "season_GF": float(base_row['T_GF']),
+            "season_GA": float(base_row['T_GA']),
+            "season_xG": float(base_row['TxG_F']),
+            "season_xGA": float(base_row['TxG_A']),
+            "recent_GF_pm": float(base_row['T_GF']),
+            "recent_GA_pm": float(base_row['T_GA']),
+            "recent_xG_pm": float(base_row['TxG_F']),
+            "recent_xGA_pm": float(base_row['TxG_A']),
             "recent_form_matches": 0,
             "recent_xg_matches": 0,
             "trend_creation": 0.0,
@@ -240,7 +237,6 @@ def calculate_recent_bonus(team_name, base_row, recent_df):
     }
 
 def render_recent_bonus_table(bonus):
-    st.markdown(f"### Dane wejściowe dla {bonus['team']}")
     table_html = f"""
     <table style="width:100%; border-collapse:collapse; font-size:20px;">
         <tr>
@@ -270,6 +266,7 @@ def render_recent_bonus_table(bonus):
         </tr>
     </table>
     """
+    st.markdown(f"### Dane wejściowe dla {bonus['team']}")
     st.markdown(table_html, unsafe_allow_html=True)
 
 def render_recent_bonus_details(bonus):
@@ -285,9 +282,7 @@ def render_recent_bonus_details(bonus):
 - **Po tłumieniu (× 0.25)**: {bonus['raw_attack_bonus']:+.2%} × 0.25 = **{bonus['attack_bonus']:+.2%}**
         """
     )
-    st.markdown(
-        f"**Wynik:** Siła ataku **{bonus['team']}** zostaje **{atk_sign}** o **{abs(bonus['attack_bonus']):.2%}**."
-    )
+    st.markdown(f"**Wynik:** Siła ataku **{bonus['team']}** zostaje **{atk_sign}** o **{abs(bonus['attack_bonus']):.2%}**.")
 
     st.markdown(f"## 3. Obliczanie Bonusu Obrony {bonus['team']}")
     st.markdown(f"Sprawdzamy, jak radzi sobie blok defensywny i bramkarz **{bonus['team']}**.")
@@ -299,19 +294,13 @@ def render_recent_bonus_details(bonus):
 - **Po tłumieniu (× 0.25)**: {bonus['raw_defense_bonus']:+.2%} × 0.25 = **{bonus['defense_bonus']:+.2%}**
         """
     )
-    st.markdown(
-        f"**Wynik:** Obrona **{bonus['team']}** jest oceniana o **{abs(bonus['defense_bonus']):.2%} {def_sign}** niż średnia z sezonu."
-    )
+    st.markdown(f"**Wynik:** Obrona **{bonus['team']}** jest oceniana o **{abs(bonus['defense_bonus']):.2%} {def_sign}** niż średnia z sezonu.")
 
-# --- SESSION STATE ---
 if 'mod_reset' not in st.session_state:
     st.session_state.mod_reset = 0
 
 def reset_mods():
     st.session_state.mod_reset += 1
-
-# --- SIDEBAR ---
-st.sidebar.header("⚙️ Konfiguracja Wag")
 
 if 'reset_counter' not in st.session_state:
     st.session_state.reset_counter = 0
@@ -319,6 +308,7 @@ if 'reset_counter' not in st.session_state:
 def reset_weights():
     st.session_state.reset_counter += 1
 
+st.sidebar.header("⚙️ Konfiguracja Wag")
 st.sidebar.button("🔄 Resetuj wagi", on_click=reset_weights)
 
 options = [i for i in range(0, 105, 5)]
@@ -334,7 +324,6 @@ if v0 + v1 + v2 + v3 != 100:
 w0, w1, w2, w3 = v0 / 100, v1 / 100, v2 / 100, v3 / 100
 fixed_rho = -0.15
 
-# --- INTERFEJS ---
 tab_bl, tab_pl, tab_ll = st.tabs(["🇩🇪 Bundesliga", "🏴 Premier League", "🇪🇸 La Liga"])
 
 def render_league_ui(df, league_name):
@@ -374,7 +363,6 @@ def render_league_ui(df, league_name):
     h = df[df['Team'] == h_team].iloc[0]
     a = df[df['Team'] == a_team].iloc[0]
 
-    # --- BONUSY ZA OSTATNIE MECZE ---
     h_recent_attack_bonus = 0.0
     h_recent_defense_bonus = 0.0
     a_recent_attack_bonus = 0.0
@@ -395,11 +383,9 @@ def render_league_ui(df, league_name):
         a_recent_defense_bonus = a_bonus["defense_bonus"]
 
         bonus_col1, bonus_col2 = st.columns(2)
-
         with bonus_col1:
             render_recent_bonus_table(h_bonus)
             render_recent_bonus_details(h_bonus)
-
         with bonus_col2:
             render_recent_bonus_table(a_bonus)
             render_recent_bonus_details(a_bonus)
@@ -443,17 +429,9 @@ def render_league_ui(df, league_name):
         st.markdown("### 🧩 Wpływ bonusów ostatnich meczów na lambdy")
         adj1, adj2 = st.columns(2)
         with adj1:
-            st.metric(
-                f"Lambda {h_team}",
-                f"{lambda_f:.3f}",
-                f"Base: {lambda_base:.3f} | Mnożnik formy: {home_recent_multiplier:.3f}"
-            )
+            st.metric(f"Lambda {h_team}", f"{lambda_f:.3f}", f"Base: {lambda_base:.3f} | Mnożnik formy: {home_recent_multiplier:.3f}")
         with adj2:
-            st.metric(
-                f"Lambda {a_team}",
-                f"{mu_f:.3f}",
-                f"Base: {mu_base:.3f} | Mnożnik formy: {away_recent_multiplier:.3f}"
-            )
+            st.metric(f"Lambda {a_team}", f"{mu_f:.3f}", f"Base: {mu_base:.3f} | Mnożnik formy: {away_recent_multiplier:.3f}")
 
     c1, c2, c3 = st.columns(3)
     c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {model_odds[0]:.2f}")
@@ -477,14 +455,14 @@ def render_league_ui(df, league_name):
 
     def create_stat_styled_table(team_data, context, full_df):
         if context == "Cały sezon":
-            gf, ga, xgf, xga = team_data['T_GF'], team_data['T_GA'], team_data['AxG_F'], team_data['AxG_A']
-            l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['T_GF'].mean(), full_df['T_GA'].mean(), full_df['AxG_F'].mean(), full_df['AxG_A'].mean()
+            gf, ga, xgf, xga = team_data['T_GF'], team_data['T_GA'], team_data['TxG_F'], team_data['TxG_A']
+            l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['T_GF'].mean(), full_df['T_GA'].mean(), full_df['TxG_F'].mean(), full_df['TxG_A'].mean()
         elif context == "Dom":
             gf, ga, xgf, xga = team_data['H_GF'], team_data['H_GA'], team_data['HxG_F'], team_data['HxG_A']
             l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['H_GF'].mean(), full_df['H_GA'].mean(), full_df['HxG_F'].mean(), full_df['HxG_A'].mean()
         else:
-            gf, ga, xgf, xga = team_data['A_GF'], team_data['A_GA'], team_data['TxG_F'], team_data['TxG_A']
-            l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['A_GF'].mean(), full_df['A_GA'].mean(), full_df['TxG_F'].mean(), full_df['TxG_A'].mean()
+            gf, ga, xgf, xga = team_data['A_GF'], team_data['A_GA'], team_data['AxG_F'], team_data['AxG_A']
+            l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga = full_df['A_GF'].mean(), full_df['A_GA'].mean(), full_df['AxG_F'].mean(), full_df['AxG_A'].mean()
 
         df_stats = pd.DataFrame({
             "Statystyka": ["Gole Strzelone", "Gole Stracone", "xG (Atak)", "xG (Obrona)"],
@@ -551,9 +529,6 @@ def render_league_ui(df, league_name):
             st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times {home_recent_multiplier:.3f} = {lambda_f:.3f}")
             st.latex(rf"\mu_{{base}} = {mu_base:.3f}")
             st.latex(rf"\mu_{{final}} = \mu_{{base}} \times {away_recent_multiplier:.3f} = {mu_f:.3f}")
-        else:
-            st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}")
-            st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
 
     with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
         limit = 8
@@ -636,7 +611,6 @@ def render_league_ui(df, league_name):
     else:
         st.info("Dodaj HF_TOKEN do Secrets.")
 
-# Wywołanie UI
 with tab_bl:
     render_league_ui(load_bundesliga(), "Bundesliga")
 
