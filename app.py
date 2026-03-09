@@ -90,12 +90,12 @@ def load_bundesliga_recent_bonus_data():
         'recent_xG_total': [16.10, 8.22, 10.02, 9.62, 13.56, 11.76, 8.49, 4.00, 11.02, 10.93, 6.40, 5.63, 6.62, 4.83, 9.23, 4.21, 6.64, 8.22],
         'recent_xGA_total': [8.36, 10.06, 8.57, 9.40, 7.65, 10.16, 12.42, 7.81, 7.04, 6.86, 4.98, 7.91, 7.28, 10.96, 5.34, 8.21, 11.98, 10.54]
     }
-    df = pd.DataFrame(data)
-    df['recent_GF_pm'] = df['recent_GF_total'] / df['recent_form_matches']
-    df['recent_GA_pm'] = df['recent_GA_total'] / df['recent_form_matches']
-    df['recent_xG_pm'] = df['recent_xG_total'] / df['recent_xg_matches']
-    df['recent_xGA_pm'] = df['recent_xGA_total'] / df['recent_xg_matches']
-    return df
+    recent_df = pd.DataFrame(data)
+    recent_df['recent_GF_pm'] = recent_df['recent_GF_total'] / recent_df['recent_form_matches']
+    recent_df['recent_GA_pm'] = recent_df['recent_GA_total'] / recent_df['recent_form_matches']
+    recent_df['recent_xG_pm'] = recent_df['recent_xG_total'] / recent_df['recent_xg_matches']
+    recent_df['recent_xGA_pm'] = recent_df['recent_xGA_total'] / recent_df['recent_xg_matches']
+    return recent_df
 
 # --- DANE RECENT BONUS: PREMIER LEAGUE ---
 @st.cache_data
@@ -114,12 +114,12 @@ def load_premier_league_recent_bonus_data():
         'recent_xG_total': [9.54, 11.51, 8.51, 11.02, 14.23, 8.27, 7.90, 8.35, 7.39, 5.52, 7.62, 4.71, 4.80, 8.37, 9.38, 4.83, 4.86, 5.14, 6.69, 4.91],
         'recent_xGA_total': [5.07, 5.44, 4.81, 6.03, 6.20, 8.62, 7.07, 6.95, 6.75, 14.98, 5.83, 4.54, 9.16, 7.77, 9.78, 7.78, 8.48, 9.37, 6.73, 12.19]
     }
-    df = pd.DataFrame(data)
-    df['recent_GF_pm'] = df['recent_GF_total'] / df['recent_form_matches']
-    df['recent_GA_pm'] = df['recent_GA_total'] / df['recent_form_matches']
-    df['recent_xG_pm'] = df['recent_xG_total'] / df['recent_xg_matches']
-    df['recent_xGA_pm'] = df['recent_xGA_total'] / df['recent_xg_matches']
-    return df
+    recent_df = pd.DataFrame(data)
+    recent_df['recent_GF_pm'] = recent_df['recent_GF_total'] / recent_df['recent_form_matches']
+    recent_df['recent_GA_pm'] = recent_df['recent_GA_total'] / recent_df['recent_form_matches']
+    recent_df['recent_xG_pm'] = recent_df['recent_xG_total'] / recent_df['recent_xg_matches']
+    recent_df['recent_xGA_pm'] = recent_df['recent_xGA_total'] / recent_df['recent_xg_matches']
+    return recent_df
 
 # --- DANE RECENT BONUS: LA LIGA ---
 @st.cache_data
@@ -138,12 +138,23 @@ def load_la_liga_recent_bonus_data():
         'recent_xG_total': [13.53, 4.95, 8.79, 10.96, 8.84, 7.76, 9.10, 8.18, 6.47, 7.06, 7.36, 7.45, 3.40, 11.04, 9.44, 3.55, 7.04, 5.12, 7.65, 3.78],
         'recent_xGA_total': [6.91, 7.54, 5.93, 10.22, 4.18, 4.14, 6.45, 5.47, 6.70, 6.75, 3.39, 10.23, 5.94, 7.31, 9.49, 11.49, 13.38, 7.38, 9.11, 9.46]
     }
-    df = pd.DataFrame(data)
-    df['recent_GF_pm'] = df['recent_GF_total'] / df['recent_form_matches']
-    df['recent_GA_pm'] = df['recent_GA_total'] / df['recent_form_matches']
-    df['recent_xG_pm'] = df['recent_xG_total'] / df['recent_xg_matches']
-    df['recent_xGA_pm'] = df['recent_xGA_total'] / df['recent_xg_matches']
-    return df
+    recent_df = pd.DataFrame(data)
+    recent_df['recent_GF_pm'] = recent_df['recent_GF_total'] / recent_df['recent_form_matches']
+    recent_df['recent_GA_pm'] = recent_df['recent_GA_total'] / recent_df['recent_form_matches']
+    recent_df['recent_xG_pm'] = recent_df['recent_xG_total'] / recent_df['recent_xg_matches']
+    recent_df['recent_xGA_pm'] = recent_df['recent_xGA_total'] / recent_df['recent_xg_matches']
+    return recent_df
+
+def dixon_coles_adjustment(x, y, l_h, m_a, rho):
+    if x == 0 and y == 0:
+        return 1 - (l_h * m_a * rho)
+    if x == 0 and y == 1:
+        return 1 + (l_h * rho)
+    if x == 1 and y == 0:
+        return 1 + (m_a * rho)
+    if x == 1 and y == 1:
+        return 1 - rho
+    return 1
 
 def get_recent_bonus_df(league_name):
     if league_name == "Bundesliga":
@@ -158,28 +169,19 @@ def calculate_recent_bonus(team_name, base_row, recent_df):
     eps = 1e-9
     team_recent = recent_df[recent_df['Team'] == team_name]
 
-    season_GF = float(base_row['T_GF'])
-    season_GA = float(base_row['T_GA'])
-    season_xG = float(base_row['TxG_F'])
-    season_xGA = float(base_row['TxG_A'])
-
     if team_recent.empty:
         return {
             "team": team_name,
-            "season_GF": season_GF,
-            "season_GA": season_GA,
-            "season_xG": season_xG,
-            "season_xGA": season_xGA,
-            "recent_GF_pm": season_GF,
-            "recent_GA_pm": season_GA,
-            "recent_xG_pm": season_xG,
-            "recent_xGA_pm": season_xGA,
+            "season_GF": float(base_row['T_GF']),
+            "season_GA": float(base_row['T_GA']),
+            "season_xG": float(base_row['TxG_F']),
+            "season_xGA": float(base_row['TxG_A']),
+            "recent_GF_pm": float(base_row['T_GF']),
+            "recent_GA_pm": float(base_row['T_GA']),
+            "recent_xG_pm": float(base_row['TxG_F']),
+            "recent_xGA_pm": float(base_row['TxG_A']),
             "recent_form_matches": 0,
             "recent_xg_matches": 0,
-            "season_finishing_ratio": season_GF / max(season_xG, eps),
-            "recent_finishing_ratio": season_GF / max(season_xG, eps),
-            "season_concede_ratio": season_GA / max(season_xGA, eps),
-            "recent_concede_ratio": season_GA / max(season_xGA, eps),
             "trend_creation": 0.0,
             "finishing": 0.0,
             "raw_attack_bonus": 0.0,
@@ -192,27 +194,23 @@ def calculate_recent_bonus(team_name, base_row, recent_df):
 
     r = team_recent.iloc[0]
 
+    season_GF = float(base_row['T_GF'])
+    season_GA = float(base_row['T_GA'])
+    season_xG = float(base_row['TxG_F'])
+    season_xGA = float(base_row['TxG_A'])
+
     recent_GF_pm = float(r['recent_GF_pm'])
     recent_GA_pm = float(r['recent_GA_pm'])
     recent_xG_pm = float(r['recent_xG_pm'])
     recent_xGA_pm = float(r['recent_xGA_pm'])
 
-    # 1) trend kreacji / trend defensywny względem sezonu
     trend_creation = (recent_xG_pm - season_xG) / max(season_xG, eps)
-    trend_defense = (season_xGA - recent_xGA_pm) / max(season_xGA, eps)
-
-    # 2) skuteczność liczona poprawnie: recent vs season, a nie tylko recent vs xG
-    season_finishing_ratio = season_GF / max(season_xG, eps)
-    recent_finishing_ratio = recent_GF_pm / max(recent_xG_pm, eps)
-    finishing = (recent_finishing_ratio - season_finishing_ratio) / max(season_finishing_ratio, eps)
-
-    season_concede_ratio = season_GA / max(season_xGA, eps)
-    recent_concede_ratio = recent_GA_pm / max(recent_xGA_pm, eps)
-    defense_gk = (season_concede_ratio - recent_concede_ratio) / max(season_concede_ratio, eps)
-
+    finishing = (recent_GF_pm - recent_xG_pm) / max(recent_xG_pm, eps)
     raw_attack_bonus = (trend_creation * 0.7) + (finishing * 0.3)
     attack_bonus = raw_attack_bonus * 0.25
 
+    trend_defense = (season_xGA - recent_xGA_pm) / max(season_xGA, eps)
+    defense_gk = (recent_xGA_pm - recent_GA_pm) / max(recent_xGA_pm, eps)
     raw_defense_bonus = (trend_defense * 0.7) + (defense_gk * 0.3)
     defense_bonus = raw_defense_bonus * 0.25
 
@@ -228,10 +226,6 @@ def calculate_recent_bonus(team_name, base_row, recent_df):
         "recent_xGA_pm": recent_xGA_pm,
         "recent_form_matches": int(r['recent_form_matches']),
         "recent_xg_matches": int(r['recent_xg_matches']),
-        "season_finishing_ratio": season_finishing_ratio,
-        "recent_finishing_ratio": recent_finishing_ratio,
-        "season_concede_ratio": season_concede_ratio,
-        "recent_concede_ratio": recent_concede_ratio,
         "trend_creation": trend_creation,
         "finishing": finishing,
         "raw_attack_bonus": raw_attack_bonus,
@@ -243,7 +237,6 @@ def calculate_recent_bonus(team_name, base_row, recent_df):
     }
 
 def render_recent_bonus_table(bonus):
-    st.markdown(f"### Dane wejściowe dla {bonus['team']}")
     table_html = f"""
     <table style="width:100%; border-collapse:collapse; font-size:20px;">
         <tr>
@@ -273,6 +266,7 @@ def render_recent_bonus_table(bonus):
         </tr>
     </table>
     """
+    st.markdown(f"### Dane wejściowe dla {bonus['team']}")
     st.markdown(table_html, unsafe_allow_html=True)
 
 def render_recent_bonus_details(bonus):
@@ -283,7 +277,7 @@ def render_recent_bonus_details(bonus):
     st.markdown(
         f"""
 - **Trend Kreacji (70%)**: ({bonus['recent_xG_pm']:.2f} - {bonus['season_xG']:.2f}) / {bonus['season_xG']:.2f} = **{bonus['trend_creation']:+.1%}**
-- **Skuteczność (30%)**: (({bonus['recent_GF_pm']:.2f} / {bonus['recent_xG_pm']:.2f}) - ({bonus['season_GF']:.2f} / {bonus['season_xG']:.2f})) / ({bonus['season_GF']:.2f} / {bonus['season_xG']:.2f}) = **{bonus['finishing']:+.1%}**
+- **Skuteczność (30%)**: ({bonus['recent_GF_pm']:.2f} - {bonus['recent_xG_pm']:.2f}) / {bonus['recent_xG_pm']:.2f} = **{bonus['finishing']:+.1%}**
 - **Surowy Bonus Ataku**: ({bonus['trend_creation']:+.1%} × 0.7) + ({bonus['finishing']:+.1%} × 0.3) = **{bonus['raw_attack_bonus']:+.2%}**
 - **Po tłumieniu (× 0.25)**: {bonus['raw_attack_bonus']:+.2%} × 0.25 = **{bonus['attack_bonus']:+.2%}**
         """
@@ -295,7 +289,7 @@ def render_recent_bonus_details(bonus):
     st.markdown(
         f"""
 - **Trend Defensywny (70%)**: ({bonus['season_xGA']:.2f} - {bonus['recent_xGA_pm']:.2f}) / {bonus['season_xGA']:.2f} = **{bonus['trend_defense']:+.1%}**
-- **Skuteczność Obrony/GK (30%)**: (({bonus['season_GA']:.2f} / {bonus['season_xGA']:.2f}) - ({bonus['recent_GA_pm']:.2f} / {bonus['recent_xGA_pm']:.2f})) / ({bonus['season_GA']:.2f} / {bonus['season_xGA']:.2f}) = **{bonus['defense_gk']:+.1%}**
+- **Skuteczność Obrony/GK (30%)**: ({bonus['recent_xGA_pm']:.2f} - {bonus['recent_GA_pm']:.2f}) / {bonus['recent_xGA_pm']:.2f} = **{bonus['defense_gk']:+.1%}**
 - **Surowy Bonus Obrony**: ({bonus['trend_defense']:+.1%} × 0.7) + ({bonus['defense_gk']:+.1%} × 0.3) = **{bonus['raw_defense_bonus']:+.2%}**
 - **Po tłumieniu (× 0.25)**: {bonus['raw_defense_bonus']:+.2%} × 0.25 = **{bonus['defense_bonus']:+.2%}**
         """
@@ -426,9 +420,7 @@ def render_league_ui(df, league_name):
             matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_f, mu_f, fixed_rho)
     matrix /= matrix.sum()
 
-    p1 = np.sum(np.tril(matrix, -1))
-    px = np.sum(np.diag(matrix))
-    p2 = np.sum(np.triu(matrix, 1))
+    p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
     model_odds = [1 / max(p1, 0.001), 1 / max(px, 0.001), 1 / max(p2, 0.001)]
 
     st.divider()
