@@ -13,8 +13,8 @@ st.set_page_config(page_title="Football Predictor", layout="wide", page_icon="�
 @st.cache_data
 def load_bundesliga():
     data = {
-        'Team': ['Bayern Munich', 'Borussia Dortmund', 'Hoffenheim', 'VfB Stuttgart', 'RB Leipzig', 'Bayer Leverkusen', 
-                 'Eintracht Frankfurt', 'Freiburg', 'Augsburg', 'Union Berlin', 'Hamburger SV', 'Borussia M.Gladbach', 
+        'Team': ['Bayern Munich', 'Borussia Dortmund', 'Hoffenheim', 'VfB Stuttgart', 'RB Leipzig', 'Bayer Leverkusen',
+                 'Eintracht Frankfurt', 'Freiburg', 'Augsburg', 'Union Berlin', 'Hamburger SV', 'Borussia M.Gladbach',
                  'FC Cologne', 'Mainz 05', 'St. Pauli', 'Werder Bremen', 'Wolfsburg', 'FC Heidenheim'],
         'H_GF': [4.00, 2.33, 2.25, 1.75, 2.25, 2.08, 1.83, 1.91, 1.31, 1.42, 1.46, 1.17, 1.75, 1.08, 1.18, 1.17, 1.58, 1.08],
         'H_GA': [1.00, 0.92, 1.17, 1.00, 1.42, 0.92, 1.50, 1.09, 1.46, 1.42, 1.23, 1.75, 1.58, 1.17, 1.64, 1.75, 2.17, 2.25],
@@ -31,6 +31,32 @@ def load_bundesliga():
         'Logo_ID': [27, 16, 533, 79, 23826, 15, 24, 60, 167, 89, 41, 18, 3, 39, 35, 86, 82, 2036]
     }
     return pd.DataFrame(data)
+
+# --- DANE O OSTATNICH MECZACH: BUNDESLIGA ---
+@st.cache_data
+def load_bundesliga_recent_bonus_data():
+    data = {
+        'Team': [
+            'Bayern Munich', 'Borussia Dortmund', 'Augsburg', 'VfB Stuttgart', 'RB Leipzig', 'Hoffenheim',
+            'Hamburger SV', 'St. Pauli', 'Bayer Leverkusen', 'Mainz 05', 'Eintracht Frankfurt', 'Freiburg',
+            'Borussia M.Gladbach', 'FC Cologne', 'Werder Bremen', 'Union Berlin', 'FC Heidenheim', 'Wolfsburg'
+        ],
+        # z tabeli "Form" - ostatnie 6 meczów
+        'recent_form_matches': [6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6],
+        'recent_GF_total': [20, 15, 9, 14, 11, 13, 9, 7, 10, 8, 10, 6, 5, 6, 4, 5, 7, 6],
+        'recent_GA_total': [8, 9, 7, 8, 9, 11, 7, 9, 6, 9, 10, 10, 11, 11, 9, 11, 15, 14],
+
+        # z tabeli xG/xGA - liczba meczów jest różna
+        'recent_xg_matches': [5, 5, 5, 5, 5, 5, 6, 5, 6, 5, 4, 5, 5, 5, 5, 4, 5, 5],
+        'recent_xG_total': [16.10, 8.22, 10.02, 9.62, 13.56, 11.76, 8.49, 4.00, 11.02, 10.93, 6.40, 5.63, 6.62, 4.83, 9.23, 4.21, 6.64, 8.22],
+        'recent_xGA_total': [8.36, 10.06, 8.57, 9.40, 7.65, 10.16, 12.42, 7.81, 7.04, 6.86, 4.98, 7.91, 7.28, 10.96, 5.34, 8.21, 11.98, 10.54]
+    }
+    recent_df = pd.DataFrame(data)
+    recent_df['recent_GF_pm'] = recent_df['recent_GF_total'] / recent_df['recent_form_matches']
+    recent_df['recent_GA_pm'] = recent_df['recent_GA_total'] / recent_df['recent_form_matches']
+    recent_df['recent_xG_pm'] = recent_df['recent_xG_total'] / recent_df['recent_xg_matches']
+    recent_df['recent_xGA_pm'] = recent_df['recent_xGA_total'] / recent_df['recent_xg_matches']
+    return recent_df
 
 # --- DANE BAZOWE: PREMIER LEAGUE ---
 @st.cache_data
@@ -86,6 +112,142 @@ def dixon_coles_adjustment(x, y, l_h, m_a, rho):
         return 1 - rho
     return 1
 
+# --- BONUSY ZA OSTATNIE MECZE ---
+def calculate_recent_bonus(team_name, base_row, recent_df):
+    eps = 1e-9
+    team_recent = recent_df[recent_df['Team'] == team_name]
+
+    if team_recent.empty:
+        return {
+            "team": team_name,
+            "season_GF": base_row['T_GF'],
+            "season_GA": base_row['T_GA'],
+            "season_xG": base_row['TxG_F'],
+            "season_xGA": base_row['TxG_A'],
+            "recent_GF_pm": base_row['T_GF'],
+            "recent_GA_pm": base_row['T_GA'],
+            "recent_xG_pm": base_row['TxG_F'],
+            "recent_xGA_pm": base_row['TxG_A'],
+            "recent_form_matches": 0,
+            "recent_xg_matches": 0,
+            "trend_creation": 0.0,
+            "finishing": 0.0,
+            "raw_attack_bonus": 0.0,
+            "attack_bonus": 0.0,
+            "trend_defense": 0.0,
+            "defense_gk": 0.0,
+            "raw_defense_bonus": 0.0,
+            "defense_bonus": 0.0
+        }
+
+    r = team_recent.iloc[0]
+
+    season_GF = float(base_row['T_GF'])
+    season_GA = float(base_row['T_GA'])
+    season_xG = float(base_row['TxG_F'])
+    season_xGA = float(base_row['TxG_A'])
+
+    recent_GF_pm = float(r['recent_GF_pm'])
+    recent_GA_pm = float(r['recent_GA_pm'])
+    recent_xG_pm = float(r['recent_xG_pm'])
+    recent_xGA_pm = float(r['recent_xGA_pm'])
+
+    trend_creation = (recent_xG_pm - season_xG) / max(season_xG, eps)
+    finishing = (recent_GF_pm - recent_xG_pm) / max(recent_xG_pm, eps)
+    raw_attack_bonus = (trend_creation * 0.7) + (finishing * 0.3)
+    attack_bonus = raw_attack_bonus * 0.25
+
+    trend_defense = (season_xGA - recent_xGA_pm) / max(season_xGA, eps)
+    defense_gk = (recent_xGA_pm - recent_GA_pm) / max(recent_xGA_pm, eps)
+    raw_defense_bonus = (trend_defense * 0.7) + (defense_gk * 0.3)
+    defense_bonus = raw_defense_bonus * 0.25
+
+    return {
+        "team": team_name,
+        "season_GF": season_GF,
+        "season_GA": season_GA,
+        "season_xG": season_xG,
+        "season_xGA": season_xGA,
+        "recent_GF_pm": recent_GF_pm,
+        "recent_GA_pm": recent_GA_pm,
+        "recent_xG_pm": recent_xG_pm,
+        "recent_xGA_pm": recent_xGA_pm,
+        "recent_form_matches": int(r['recent_form_matches']),
+        "recent_xg_matches": int(r['recent_xg_matches']),
+        "trend_creation": trend_creation,
+        "finishing": finishing,
+        "raw_attack_bonus": raw_attack_bonus,
+        "attack_bonus": attack_bonus,
+        "trend_defense": trend_defense,
+        "defense_gk": defense_gk,
+        "raw_defense_bonus": raw_defense_bonus,
+        "defense_bonus": defense_bonus
+    }
+
+def render_recent_bonus_table(bonus):
+    st.markdown(f"### Dane wejściowe dla {bonus['team']}")
+    table_html = f"""
+    <table style="width:100%; border-collapse:collapse; font-size:20px;">
+        <tr>
+            <th style="border:1px solid #bbb; padding:10px; text-align:left; background:#f2f2f2;">Parametr (na mecz)</th>
+            <th style="border:1px solid #bbb; padding:10px; text-align:left; background:#f2f2f2;">Sezon (Baza)</th>
+            <th style="border:1px solid #bbb; padding:10px; text-align:left; background:#f2f2f2;">Ostatnie mecze</th>
+        </tr>
+        <tr>
+            <td style="border:1px solid #bbb; padding:10px;"><b>Gole Strzelone (GF)</b></td>
+            <td style="border:1px solid #bbb; padding:10px; background:#fff275;">{bonus['season_GF']:.2f}</td>
+            <td style="border:1px solid #bbb; padding:10px; background:#fff275;"><b>{bonus['recent_GF_pm']:.2f}</b> <span style="font-size:13px;">(ostatnie {bonus['recent_form_matches']} meczów)</span></td>
+        </tr>
+        <tr>
+            <td style="border:1px solid #bbb; padding:10px;"><b>Gole Stracone (GA)</b></td>
+            <td style="border:1px solid #bbb; padding:10px; background:#fff275;">{bonus['season_GA']:.2f}</td>
+            <td style="border:1px solid #bbb; padding:10px; background:#fff275;"><b>{bonus['recent_GA_pm']:.2f}</b> <span style="font-size:13px;">(ostatnie {bonus['recent_form_matches']} meczów)</span></td>
+        </tr>
+        <tr>
+            <td style="border:1px solid #bbb; padding:10px;"><b>xG (Kreacja)</b></td>
+            <td style="border:1px solid #bbb; padding:10px; background:#fff275;">{bonus['season_xG']:.2f}</td>
+            <td style="border:1px solid #bbb; padding:10px; background:#fff275;"><b>{bonus['recent_xG_pm']:.2f}</b> <span style="font-size:13px;">(ostatnie {bonus['recent_xg_matches']} mecze)</span></td>
+        </tr>
+        <tr>
+            <td style="border:1px solid #bbb; padding:10px;"><b>xGA (Dopuszczone)</b></td>
+            <td style="border:1px solid #bbb; padding:10px; background:#fff275;">{bonus['season_xGA']:.2f}</td>
+            <td style="border:1px solid #bbb; padding:10px; background:#fff275;"><b>{bonus['recent_xGA_pm']:.2f}</b> <span style="font-size:13px;">(ostatnie {bonus['recent_xg_matches']} mecze)</span></td>
+        </tr>
+    </table>
+    """
+    st.markdown(table_html, unsafe_allow_html=True)
+
+def render_recent_bonus_details(bonus):
+    atk_sign = "podniesiona" if bonus['attack_bonus'] >= 0 else "obniżona"
+    def_sign = "lepiej" if bonus['defense_bonus'] >= 0 else "gorzej"
+
+    st.markdown(f"## 2. Obliczanie Bonusu Ataku {bonus['team']}")
+    st.markdown(
+        f"""
+- **Trend Kreacji (70%)**: ({bonus['recent_xG_pm']:.2f} - {bonus['season_xG']:.2f}) / {bonus['season_xG']:.2f} = **{bonus['trend_creation']:+.1%}**
+- **Skuteczność (30%)**: ({bonus['recent_GF_pm']:.2f} - {bonus['recent_xG_pm']:.2f}) / {bonus['recent_xG_pm']:.2f} = **{bonus['finishing']:+.1%}**
+- **Surowy Bonus Ataku**: ({bonus['trend_creation']:+.1%} × 0.7) + ({bonus['finishing']:+.1%} × 0.3) = **{bonus['raw_attack_bonus']:+.2%}**
+- **Po tłumieniu (× 0.25)**: {bonus['raw_attack_bonus']:+.2%} × 0.25 = **{bonus['attack_bonus']:+.2%}**
+        """
+    )
+    st.markdown(
+        f"**Wynik:** Siła ataku **{bonus['team']}** zostaje **{atk_sign}** o **{abs(bonus['attack_bonus']):.2%}**."
+    )
+
+    st.markdown(f"## 3. Obliczanie Bonusu Obrony {bonus['team']}")
+    st.markdown(f"Sprawdzamy, jak radzi sobie blok defensywny i bramkarz **{bonus['team']}**.")
+    st.markdown(
+        f"""
+- **Trend Defensywny (70%)**: ({bonus['season_xGA']:.2f} - {bonus['recent_xGA_pm']:.2f}) / {bonus['season_xGA']:.2f} = **{bonus['trend_defense']:+.1%}**
+- **Skuteczność Obrony/GK (30%)**: ({bonus['recent_xGA_pm']:.2f} - {bonus['recent_GA_pm']:.2f}) / {bonus['recent_xGA_pm']:.2f} = **{bonus['defense_gk']:+.1%}**
+- **Surowy Bonus Obrony**: ({bonus['trend_defense']:+.1%} × 0.7) + ({bonus['defense_gk']:+.1%} × 0.3) = **{bonus['raw_defense_bonus']:+.2%}**
+- **Po tłumieniu (× 0.25)**: {bonus['raw_defense_bonus']:+.2%} × 0.25 = **{bonus['defense_bonus']:+.2%}**
+        """
+    )
+    st.markdown(
+        f"**Wynik:** Obrona **{bonus['team']}** jest oceniana o **{abs(bonus['defense_bonus']):.2%} {def_sign}** niż średnia z sezonu."
+    )
+
 # --- SESSION STATE ---
 if 'mod_reset' not in st.session_state:
     st.session_state.mod_reset = 0
@@ -130,7 +292,6 @@ def render_league_ui(df, league_name):
         h_team = st.selectbox(f"Gospodarz", df['Team'], index=0, key=f"h_{league_name}")
         h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
-
         with st.expander("🛠️ Modyfikatory Gospodarza"):
             mod_range = list(range(-20, 21))
             m_key = st.session_state.mod_reset
@@ -145,7 +306,6 @@ def render_league_ui(df, league_name):
         a_team = st.selectbox(f"Gość", df['Team'], index=1, key=f"a_{league_name}")
         a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
-
         with st.expander("🛠️ Modyfikatory Gościa"):
             mod_range = list(range(-20, 21))
             m_key = st.session_state.mod_reset
@@ -159,6 +319,35 @@ def render_league_ui(df, league_name):
     h = df[df['Team'] == h_team].iloc[0]
     a = df[df['Team'] == a_team].iloc[0]
 
+    # --- NOWA SEKCJA: BONUSY ZA OSTATNIE MECZE (TYLKO BUNDESLIGA) ---
+    h_recent_attack_bonus = 0.0
+    h_recent_defense_bonus = 0.0
+    a_recent_attack_bonus = 0.0
+    a_recent_defense_bonus = 0.0
+
+    if league_name == "Bundesliga":
+        st.divider()
+        st.markdown("## 🔥 Bonusy za ostatnie mecze")
+
+        recent_df = load_bundesliga_recent_bonus_data()
+        h_bonus = calculate_recent_bonus(h_team, h, recent_df)
+        a_bonus = calculate_recent_bonus(a_team, a, recent_df)
+
+        h_recent_attack_bonus = h_bonus["attack_bonus"]
+        h_recent_defense_bonus = h_bonus["defense_bonus"]
+        a_recent_attack_bonus = a_bonus["attack_bonus"]
+        a_recent_defense_bonus = a_bonus["defense_bonus"]
+
+        bonus_col1, bonus_col2 = st.columns(2)
+
+        with bonus_col1:
+            render_recent_bonus_table(h_bonus)
+            render_recent_bonus_details(h_bonus)
+
+        with bonus_col2:
+            render_recent_bonus_table(a_bonus)
+            render_recent_bonus_details(a_bonus)
+
     l_h_r = (h['HxG_F'] * w0 + h['H_GF'] * w1 + h['AxG_F'] * w2 + h['T_GF'] * w3)
     m_h_r = (h['HxG_A'] * w0 + h['H_GA'] * w1 + h['AxG_A'] * w2 + h['T_GA'] * w3)
     l_a_r = (a['TxG_F'] * w0 + a['A_GF'] * w1 + a['AxG_F'] * w2 + a['T_GF'] * w3)
@@ -167,25 +356,50 @@ def render_league_ui(df, league_name):
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
 
-    lambda_f = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod)
-    mu_f = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod)
+    lambda_base = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod)
+    mu_base = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod)
+
+    # bonus ostatnich meczów wpływa na lambdy tylko w Bundeslidze
+    if league_name == "Bundesliga":
+        home_recent_multiplier = max((1 + h_recent_attack_bonus) * (1 - a_recent_defense_bonus), 0.50)
+        away_recent_multiplier = max((1 + a_recent_attack_bonus) * (1 - h_recent_defense_bonus), 0.50)
+        lambda_f = lambda_base * home_recent_multiplier
+        mu_f = mu_base * away_recent_multiplier
+    else:
+        home_recent_multiplier = 1.0
+        away_recent_multiplier = 1.0
+        lambda_f = lambda_base
+        mu_f = mu_base
 
     max_g = 12
     matrix = np.zeros((max_g, max_g))
-
     for x in range(max_g):
         for y in range(max_g):
             p = poisson.pmf(x, lambda_f) * poisson.pmf(y, mu_f)
             matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_f, mu_f, fixed_rho)
-
     matrix /= matrix.sum()
 
-    p1 = np.sum(np.tril(matrix, -1))
-    px = np.sum(np.diag(matrix))
-    p2 = np.sum(np.triu(matrix, 1))
+    p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
     model_odds = [1 / max(p1, 0.001), 1 / max(px, 0.001), 1 / max(p2, 0.001)]
 
     st.divider()
+
+    if league_name == "Bundesliga":
+        st.markdown("### 🧩 Wpływ bonusów ostatnich meczów na lambdy")
+        adj1, adj2 = st.columns(2)
+        with adj1:
+            st.metric(
+                f"Lambda {h_team}",
+                f"{lambda_f:.3f}",
+                f"Base: {lambda_base:.3f} | Mnożnik formy: {home_recent_multiplier:.3f}"
+            )
+        with adj2:
+            st.metric(
+                f"Lambda {a_team}",
+                f"{mu_f:.3f}",
+                f"Base: {mu_base:.3f} | Mnożnik formy: {away_recent_multiplier:.3f}"
+            )
+
     c1, c2, c3 = st.columns(3)
     c1.metric(f"Wygrana {h_team}", f"{p1:.1%}", f"Kurs: {model_odds[0]:.2f}")
     c2.metric("Remis", f"{px:.1%}", f"Kurs: {model_odds[1]:.2f}")
@@ -231,12 +445,10 @@ def render_league_ui(df, league_name):
         return df_stats.style.apply(apply_styling, axis=1).format("{:.2f}", subset=["Drużyna", "Średnia ligi"])
 
     col_stats_h, col_stats_a = st.columns(2)
-
     with col_stats_h:
         st.markdown(f"**Zakres dla {h_team}**")
         ctx_h = st.radio("Wybierz:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_h_{league_name}")
         st.table(create_stat_styled_table(h, ctx_h, df))
-
     with col_stats_a:
         st.markdown(f"**Zakres dla {a_team}**")
         ctx_a = st.radio("Wybierz:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_a_{league_name}")
@@ -266,13 +478,27 @@ def render_league_ui(df, league_name):
         with sc1:
             st.markdown(f"**{h_team}**")
             st.write(f"🎯 **Bazowa Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
+            if league_name == "Bundesliga":
+                st.write(f"🔥 **Bonus ataku ostatnich meczów:** `{h_recent_attack_bonus:+.2%}`")
+                st.write(f"🛡️ **Bonus obrony rywala:** `{a_recent_defense_bonus:+.2%}`")
+                st.write(f"⚙️ **Mnożnik formy:** `{home_recent_multiplier:.3f}`")
         with sc2:
             st.markdown(f"**{a_team}**")
             st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
+            if league_name == "Bundesliga":
+                st.write(f"🔥 **Bonus ataku ostatnich meczów:** `{a_recent_attack_bonus:+.2%}`")
+                st.write(f"🛡️ **Bonus obrony rywala:** `{h_recent_defense_bonus:+.2%}`")
+                st.write(f"⚙️ **Mnożnik formy:** `{away_recent_multiplier:.3f}`")
 
         st.subheader("2. Parametry Poisson (Skorygowane)")
-        st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}")
-        st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
+        if league_name == "Bundesliga":
+            st.latex(rf"\lambda_{{base}} = {lambda_base:.3f}")
+            st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times {home_recent_multiplier:.3f} = {lambda_f:.3f}")
+            st.latex(rf"\mu_{{base}} = {mu_base:.3f}")
+            st.latex(rf"\mu_{{final}} = \mu_{{base}} \times {away_recent_multiplier:.3f} = {mu_f:.3f}")
+        else:
+            st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}")
+            st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
 
     with st.expander("📊 Zobacz Macierz Prawdopodobieństwa"):
         limit = 8
@@ -286,7 +512,6 @@ def render_league_ui(df, league_name):
     st.subheader("📉 Analiza Under / Over")
     lines = [1.5, 2.5, 3.5, 4.5]
     ou_cols = st.columns(len(lines))
-
     for i, line in enumerate(lines):
         prob_under = sum(matrix[x, y] for x in range(max_g) for y in range(max_g) if x + y < line)
         prob_over = 1 - prob_under
@@ -299,7 +524,6 @@ def render_league_ui(df, league_name):
     st.subheader("🥅 Obie Drużyny Strzelą (BTTS)")
     prob_btts_yes = sum(matrix[x, y] for x in range(1, max_g) for y in range(1, max_g))
     prob_btts_no = 1 - prob_btts_yes
-
     b1, b2 = st.columns(2)
     with b1:
         st.write(f"🟢 **TAK**: {prob_btts_yes:.1%} (Kurs: {1 / max(prob_btts_yes, 0.001):.2f})")
@@ -308,7 +532,6 @@ def render_league_ui(df, league_name):
 
     st.divider()
     st.subheader("🎲 Symulacja Monte Carlo (1 000 000 scenariuszy)")
-
     if st.button(f"🚀 URUCHOM ANALIZĘ 1 000 000 SCENARIUSZY", use_container_width=True, key=f"sim_{league_name}"):
         with st.status("Trwa symulowanie (1 mln prób)...", expanded=True) as status:
             n_sim = 1000000
@@ -316,9 +539,7 @@ def render_league_ui(df, league_name):
             sim_a = np.random.poisson(mu_f, n_sim)
             res_df = pd.DataFrame({'H': sim_h, 'A': sim_a, 'Total': sim_h + sim_a})
             most_common_row = res_df.groupby(['H', 'A']).size().idxmax()
-
             st.success(f"🏆 Najczęstszy wynik w symulacji: **{most_common_row[0]}:{most_common_row[1]}**")
-
             fig2, ax2 = plt.subplots(figsize=(10, 4))
             sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=3, ax=ax2)
             sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=3, ax=ax2)
@@ -326,28 +547,21 @@ def render_league_ui(df, league_name):
             ax2.set_title("Rozkład prawdopodobieństwa goli")
             ax2.legend()
             st.pyplot(fig2, clear_figure=True)
-
             status.update(label="Analiza zakończona!", state="complete")
 
     st.markdown("<br><hr><h2 style='text-align: center;'>💬 Ekspert AI: Analiza Wyników</h2>", unsafe_allow_html=True)
-
     if "HF_TOKEN" in st.secrets:
         client = InferenceClient(api_key=st.secrets["HF_TOKEN"])
         current_context = f"MECZ: {h_team} vs {a_team}. Szanse: {p1:.1%} / {px:.1%} / {p2:.1%}. ExG: {lambda_f:.2f} - {mu_f:.2f}."
-
         if f"messages_{league_name}" not in st.session_state:
             st.session_state[f"messages_{league_name}"] = []
-
         for message in st.session_state[f"messages_{league_name}"]:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
-
         if prompt := st.chat_input("Zadaj pytanie...", key=f"chat_input_{league_name}"):
             st.session_state[f"messages_{league_name}"].append({"role": "user", "content": prompt})
-
             with st.chat_message("user"):
                 st.markdown(prompt)
-
             with st.chat_message("assistant"):
                 placeholder = st.empty()
                 try:
