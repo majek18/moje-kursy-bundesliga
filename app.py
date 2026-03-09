@@ -32,32 +32,6 @@ def load_bundesliga():
     }
     return pd.DataFrame(data)
 
-# --- DANE O OSTATNICH MECZACH: BUNDESLIGA ---
-@st.cache_data
-def load_bundesliga_recent_bonus_data():
-    data = {
-        'Team': [
-            'Bayern Munich', 'Borussia Dortmund', 'Augsburg', 'VfB Stuttgart', 'RB Leipzig', 'Hoffenheim',
-            'Hamburger SV', 'St. Pauli', 'Bayer Leverkusen', 'Mainz 05', 'Eintracht Frankfurt', 'Freiburg',
-            'Borussia M.Gladbach', 'FC Cologne', 'Werder Bremen', 'Union Berlin', 'FC Heidenheim', 'Wolfsburg'
-        ],
-        # z tabeli "Form" - ostatnie 6 meczów
-        'recent_form_matches': [6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6],
-        'recent_GF_total': [20, 15, 9, 14, 11, 13, 9, 7, 10, 8, 10, 6, 5, 6, 4, 5, 7, 6],
-        'recent_GA_total': [8, 9, 7, 8, 9, 11, 7, 9, 6, 9, 10, 10, 11, 11, 9, 11, 15, 14],
-
-        # z tabeli xG/xGA - liczba meczów jest różna
-        'recent_xg_matches': [5, 5, 5, 5, 5, 5, 6, 5, 6, 5, 4, 5, 5, 5, 5, 4, 5, 5],
-        'recent_xG_total': [16.10, 8.22, 10.02, 9.62, 13.56, 11.76, 8.49, 4.00, 11.02, 10.93, 6.40, 5.63, 6.62, 4.83, 9.23, 4.21, 6.64, 8.22],
-        'recent_xGA_total': [8.36, 10.06, 8.57, 9.40, 7.65, 10.16, 12.42, 7.81, 7.04, 6.86, 4.98, 7.91, 7.28, 10.96, 5.34, 8.21, 11.98, 10.54]
-    }
-    recent_df = pd.DataFrame(data)
-    recent_df['recent_GF_pm'] = recent_df['recent_GF_total'] / recent_df['recent_form_matches']
-    recent_df['recent_GA_pm'] = recent_df['recent_GA_total'] / recent_df['recent_form_matches']
-    recent_df['recent_xG_pm'] = recent_df['recent_xG_total'] / recent_df['recent_xg_matches']
-    recent_df['recent_xGA_pm'] = recent_df['recent_xGA_total'] / recent_df['recent_xg_matches']
-    return recent_df
-
 # --- DANE BAZOWE: PREMIER LEAGUE ---
 @st.cache_data
 def load_premier_league():
@@ -100,6 +74,77 @@ def load_la_liga():
     }
     return pd.DataFrame(data)
 
+# --- DANE RECENT BONUS: BUNDESLIGA ---
+@st.cache_data
+def load_bundesliga_recent_bonus_data():
+    data = {
+        'Team': [
+            'Bayern Munich', 'Borussia Dortmund', 'Augsburg', 'VfB Stuttgart', 'RB Leipzig', 'Hoffenheim',
+            'Hamburger SV', 'St. Pauli', 'Bayer Leverkusen', 'Mainz 05', 'Eintracht Frankfurt', 'Freiburg',
+            'Borussia M.Gladbach', 'FC Cologne', 'Werder Bremen', 'Union Berlin', 'FC Heidenheim', 'Wolfsburg'
+        ],
+        'recent_form_matches': [6] * 18,
+        'recent_GF_total': [20, 15, 9, 14, 11, 13, 9, 7, 10, 8, 10, 6, 5, 6, 4, 5, 7, 6],
+        'recent_GA_total': [8, 9, 7, 8, 9, 11, 7, 9, 6, 9, 10, 10, 11, 11, 9, 11, 15, 14],
+        'recent_xg_matches': [5, 5, 5, 5, 5, 5, 6, 5, 6, 5, 4, 5, 5, 5, 5, 4, 5, 5],
+        'recent_xG_total': [16.10, 8.22, 10.02, 9.62, 13.56, 11.76, 8.49, 4.00, 11.02, 10.93, 6.40, 5.63, 6.62, 4.83, 9.23, 4.21, 6.64, 8.22],
+        'recent_xGA_total': [8.36, 10.06, 8.57, 9.40, 7.65, 10.16, 12.42, 7.81, 7.04, 6.86, 4.98, 7.91, 7.28, 10.96, 5.34, 8.21, 11.98, 10.54]
+    }
+    recent_df = pd.DataFrame(data)
+    recent_df['recent_GF_pm'] = recent_df['recent_GF_total'] / recent_df['recent_form_matches']
+    recent_df['recent_GA_pm'] = recent_df['recent_GA_total'] / recent_df['recent_form_matches']
+    recent_df['recent_xG_pm'] = recent_df['recent_xG_total'] / recent_df['recent_xg_matches']
+    recent_df['recent_xGA_pm'] = recent_df['recent_xGA_total'] / recent_df['recent_xg_matches']
+    return recent_df
+
+# --- DANE RECENT BONUS: PREMIER LEAGUE ---
+@st.cache_data
+def load_premier_league_recent_bonus_data():
+    data = {
+        'Team': [
+            'Arsenal', 'Manchester City', 'Manchester United', 'Liverpool', 'Chelsea', 'Brentford',
+            'Bournemouth', 'Everton', 'Crystal Palace', 'Wolves', 'West Ham', 'Brighton',
+            'Sunderland', 'Fulham', 'Newcastle', 'Leeds', 'Aston Villa', 'Burnley',
+            'Nottingham Forest', 'Tottenham'
+        ],
+        'recent_form_matches': [6] * 20,
+        'recent_GF_total': [13, 12, 10, 13, 14, 9, 6, 9, 9, 7, 8, 5, 6, 8, 10, 6, 4, 7, 5, 6],
+        'recent_GA_total': [5, 6, 6, 7, 9, 8, 3, 7, 7, 7, 9, 5, 8, 11, 14, 10, 9, 14, 9, 15],
+        'recent_xg_matches': [6, 5, 5, 5, 5, 5, 5, 5, 5, 6, 5, 5, 5, 5, 5, 4, 5, 5, 4, 5],
+        'recent_xG_total': [9.54, 11.51, 8.51, 11.02, 14.23, 8.27, 7.90, 8.35, 7.39, 5.52, 7.62, 4.71, 4.80, 8.37, 9.38, 4.83, 4.86, 5.14, 6.69, 4.91],
+        'recent_xGA_total': [5.07, 5.44, 4.81, 6.03, 6.20, 8.62, 7.07, 6.95, 6.75, 14.98, 5.83, 4.54, 9.16, 7.77, 9.78, 7.78, 8.48, 9.37, 6.73, 12.19]
+    }
+    recent_df = pd.DataFrame(data)
+    recent_df['recent_GF_pm'] = recent_df['recent_GF_total'] / recent_df['recent_form_matches']
+    recent_df['recent_GA_pm'] = recent_df['recent_GA_total'] / recent_df['recent_form_matches']
+    recent_df['recent_xG_pm'] = recent_df['recent_xG_total'] / recent_df['recent_xg_matches']
+    recent_df['recent_xGA_pm'] = recent_df['recent_xGA_total'] / recent_df['recent_xg_matches']
+    return recent_df
+
+# --- DANE RECENT BONUS: LA LIGA ---
+@st.cache_data
+def load_la_liga_recent_bonus_data():
+    data = {
+        'Team': [
+            'Barcelona', 'Getafe', 'Real Madrid', 'Villarreal', 'Athletic Club', 'Real Betis',
+            'Atletico Madrid', 'Rayo Vallecano', 'Osasuna', 'Valencia', 'Celta Vigo',
+            'Real Sociedad', 'Sevilla', 'Girona', 'Alaves', 'Mallorca', 'Levante',
+            'Real Oviedo', 'Elche', 'Espanyol'
+        ],
+        'recent_form_matches': [6] * 20,
+        'recent_GF_total': [15, 7, 11, 11, 10, 8, 8, 10, 8, 8, 8, 11, 7, 7, 7, 7, 5, 5, 6, 10],
+        'recent_GA_total': [4, 2, 6, 9, 7, 7, 8, 5, 7, 8, 7, 12, 9, 8, 11, 11, 11, 12, 12, 17],
+        'recent_xg_matches': [5, 5, 5, 6, 5, 5, 5, 5, 4, 5, 4, 5, 5, 5, 5, 5, 6, 4, 5, 4],
+        'recent_xG_total': [13.53, 4.95, 8.79, 10.96, 8.84, 7.76, 9.10, 8.18, 6.47, 7.06, 7.36, 7.45, 3.40, 11.04, 9.44, 3.55, 7.04, 5.12, 7.65, 3.78],
+        'recent_xGA_total': [6.91, 7.54, 5.93, 10.22, 4.18, 4.14, 6.45, 5.47, 6.70, 6.75, 3.39, 10.23, 5.94, 7.31, 9.49, 11.49, 13.38, 7.38, 9.11, 9.46]
+    }
+    recent_df = pd.DataFrame(data)
+    recent_df['recent_GF_pm'] = recent_df['recent_GF_total'] / recent_df['recent_form_matches']
+    recent_df['recent_GA_pm'] = recent_df['recent_GA_total'] / recent_df['recent_form_matches']
+    recent_df['recent_xG_pm'] = recent_df['recent_xG_total'] / recent_df['recent_xg_matches']
+    recent_df['recent_xGA_pm'] = recent_df['recent_xGA_total'] / recent_df['recent_xg_matches']
+    return recent_df
+
 # --- FUNKCJA KOREKTY ---
 def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 0 and y == 0:
@@ -111,6 +156,16 @@ def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 1 and y == 1:
         return 1 - rho
     return 1
+
+# --- MAPA DANYCH RECENT WG LIG ---
+def get_recent_bonus_df(league_name):
+    if league_name == "Bundesliga":
+        return load_bundesliga_recent_bonus_data()
+    if league_name == "Premier League":
+        return load_premier_league_recent_bonus_data()
+    if league_name == "La Liga":
+        return load_la_liga_recent_bonus_data()
+    return None
 
 # --- BONUSY ZA OSTATNIE MECZE ---
 def calculate_recent_bonus(team_name, base_row, recent_df):
@@ -289,7 +344,7 @@ def render_league_ui(df, league_name):
     col_a, col_b = st.columns(2)
 
     with col_a:
-        h_team = st.selectbox(f"Gospodarz", df['Team'], index=0, key=f"h_{league_name}")
+        h_team = st.selectbox("Gospodarz", df['Team'], index=0, key=f"h_{league_name}")
         h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
         with st.expander("🛠️ Modyfikatory Gospodarza"):
@@ -303,7 +358,7 @@ def render_league_ui(df, league_name):
             st.button("🧹 Resetuj", key=f"reset_h_{league_name}", on_click=reset_mods, use_container_width=True)
 
     with col_b:
-        a_team = st.selectbox(f"Gość", df['Team'], index=1, key=f"a_{league_name}")
+        a_team = st.selectbox("Gość", df['Team'], index=1, key=f"a_{league_name}")
         a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
         with st.expander("🛠️ Modyfikatory Gościa"):
@@ -319,17 +374,18 @@ def render_league_ui(df, league_name):
     h = df[df['Team'] == h_team].iloc[0]
     a = df[df['Team'] == a_team].iloc[0]
 
-    # --- NOWA SEKCJA: BONUSY ZA OSTATNIE MECZE (TYLKO BUNDESLIGA) ---
+    # --- BONUSY ZA OSTATNIE MECZE ---
     h_recent_attack_bonus = 0.0
     h_recent_defense_bonus = 0.0
     a_recent_attack_bonus = 0.0
     a_recent_defense_bonus = 0.0
 
-    if league_name == "Bundesliga":
+    recent_df = get_recent_bonus_df(league_name)
+
+    if recent_df is not None:
         st.divider()
         st.markdown("## 🔥 Bonusy za ostatnie mecze")
 
-        recent_df = load_bundesliga_recent_bonus_data()
         h_bonus = calculate_recent_bonus(h_team, h, recent_df)
         a_bonus = calculate_recent_bonus(a_team, a, recent_df)
 
@@ -359,8 +415,7 @@ def render_league_ui(df, league_name):
     lambda_base = (h_atk_s * a_def_s * avg_h_gf) * (1 + h_total_mod)
     mu_base = (a_atk_s * h_def_s * avg_a_gf) * (1 + a_total_mod)
 
-    # bonus ostatnich meczów wpływa na lambdy tylko w Bundeslidze
-    if league_name == "Bundesliga":
+    if recent_df is not None:
         home_recent_multiplier = max((1 + h_recent_attack_bonus) * (1 - a_recent_defense_bonus), 0.50)
         away_recent_multiplier = max((1 + a_recent_attack_bonus) * (1 - h_recent_defense_bonus), 0.50)
         lambda_f = lambda_base * home_recent_multiplier
@@ -384,7 +439,7 @@ def render_league_ui(df, league_name):
 
     st.divider()
 
-    if league_name == "Bundesliga":
+    if recent_df is not None:
         st.markdown("### 🧩 Wpływ bonusów ostatnich meczów na lambdy")
         adj1, adj2 = st.columns(2)
         with adj1:
@@ -478,20 +533,20 @@ def render_league_ui(df, league_name):
         with sc1:
             st.markdown(f"**{h_team}**")
             st.write(f"🎯 **Bazowa Siła Ataku:** `{l_h_r:.3f} / {avg_h_gf:.3f} = {h_atk_s:.3f}`")
-            if league_name == "Bundesliga":
+            if recent_df is not None:
                 st.write(f"🔥 **Bonus ataku ostatnich meczów:** `{h_recent_attack_bonus:+.2%}`")
                 st.write(f"🛡️ **Bonus obrony rywala:** `{a_recent_defense_bonus:+.2%}`")
                 st.write(f"⚙️ **Mnożnik formy:** `{home_recent_multiplier:.3f}`")
         with sc2:
             st.markdown(f"**{a_team}**")
             st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
-            if league_name == "Bundesliga":
+            if recent_df is not None:
                 st.write(f"🔥 **Bonus ataku ostatnich meczów:** `{a_recent_attack_bonus:+.2%}`")
                 st.write(f"🛡️ **Bonus obrony rywala:** `{h_recent_defense_bonus:+.2%}`")
                 st.write(f"⚙️ **Mnożnik formy:** `{away_recent_multiplier:.3f}`")
 
         st.subheader("2. Parametry Poisson (Skorygowane)")
-        if league_name == "Bundesliga":
+        if recent_df is not None:
             st.latex(rf"\lambda_{{base}} = {lambda_base:.3f}")
             st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times {home_recent_multiplier:.3f} = {lambda_f:.3f}")
             st.latex(rf"\mu_{{base}} = {mu_base:.3f}")
