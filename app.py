@@ -5,35 +5,9 @@ from scipy.stats import poisson
 import seaborn as sns
 import matplotlib.pyplot as plt
 from huggingface_hub import InferenceClient
-import requests
 
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Football Predictor", layout="wide", page_icon="⚽")
-
-# --- MAPOWANIE LIG DLA API ---
-LEAGUE_MAP = {
-    "Bundesliga": "soccer_germany_bundesliga",
-    "Premier League": "soccer_upcoming",
-    "La Liga": "soccer_spain_la_liga"
-}
-
-# --- FUNKCJA POBIERANIA KURSÓW ---
-def get_live_odds(league_key):
-    try:
-        api_key = st.secrets["ODDS_API_KEY"]
-        url = f"https://api.the-odds-api.com/v4/sports/{league_key}/odds/"
-        params = {
-            "apiKey": api_key,
-            "regions": "eu",
-            "markets": "h2h",
-            "oddsFormat": "decimal"
-        }
-        response = requests.get(url, params=params)
-        if response.status_code == 200:
-            return response.json()
-        return None
-    except:
-        return None
 
 # --- DANE BAZOWE: BUNDESLIGA ---
 @st.cache_data
@@ -102,20 +76,32 @@ def load_la_liga():
 
 # --- FUNKCJA KOREKTY ---
 def dixon_coles_adjustment(x, y, l_h, m_a, rho):
-    if x == 0 and y == 0: return 1 - (l_h * m_a * rho)
-    if x == 0 and y == 1: return 1 + (l_h * rho)
-    if x == 1 and y == 0: return 1 + (m_a * rho)
-    if x == 1 and y == 1: return 1 - rho
+    if x == 0 and y == 0:
+        return 1 - (l_h * m_a * rho)
+    if x == 0 and y == 1:
+        return 1 + (l_h * rho)
+    if x == 1 and y == 0:
+        return 1 + (m_a * rho)
+    if x == 1 and y == 1:
+        return 1 - rho
     return 1
 
 # --- SESSION STATE ---
-if 'mod_reset' not in st.session_state: st.session_state.mod_reset = 0
-def reset_mods(): st.session_state.mod_reset += 1
+if 'mod_reset' not in st.session_state:
+    st.session_state.mod_reset = 0
+
+def reset_mods():
+    st.session_state.mod_reset += 1
 
 # --- SIDEBAR ---
 st.sidebar.header("⚙️ Konfiguracja Wag")
-if 'reset_counter' not in st.session_state: st.session_state.reset_counter = 0
-def reset_weights(): st.session_state.reset_counter += 1
+
+if 'reset_counter' not in st.session_state:
+    st.session_state.reset_counter = 0
+
+def reset_weights():
+    st.session_state.reset_counter += 1
+
 st.sidebar.button("🔄 Resetuj wagi", on_click=reset_weights)
 
 options = [i for i in range(0, 105, 5)]
@@ -128,21 +114,23 @@ if v0 + v1 + v2 + v3 != 100:
     st.sidebar.error("Suma wag musi wynosić 100%!")
     st.stop()
 
-w0, w1, w2, w3 = v0/100, v1/100, v2/100, v3/100
+w0, w1, w2, w3 = v0 / 100, v1 / 100, v2 / 100, v3 / 100
 fixed_rho = -0.15
 
 # --- INTERFEJS ---
-tab_bl, tab_pl, tab_ll = st.tabs(["🇩🇪 Bundesliga", "🏴󠁧󠁢󠁥󠁮󠁧󠁿 Premier League", "🇪🇸 La Liga"])
+tab_bl, tab_pl, tab_ll = st.tabs(["🇩🇪 Bundesliga", "🏴 Premier League", "🇪🇸 La Liga"])
 
 def render_league_ui(df, league_name):
     avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
     st.title(f"⚽ {league_name} Predictor")
-    
+
     col_a, col_b = st.columns(2)
+
     with col_a:
         h_team = st.selectbox(f"Gospodarz", df['Team'], index=0, key=f"h_{league_name}")
         h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
+
         with st.expander("🛠️ Modyfikatory Gospodarza"):
             mod_range = list(range(-20, 21))
             m_key = st.session_state.mod_reset
@@ -152,10 +140,12 @@ def render_league_ui(df, league_name):
             h_p = st.select_slider("POGODA", options=mod_range, value=0, key=f"h_p_{league_name}_{m_key}")
             h_total_mod = (h_k + h_f + h_s + h_p) / 100
             st.button("🧹 Resetuj", key=f"reset_h_{league_name}", on_click=reset_mods, use_container_width=True)
+
     with col_b:
         a_team = st.selectbox(f"Gość", df['Team'], index=1, key=f"a_{league_name}")
         a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
         st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
+
         with st.expander("🛠️ Modyfikatory Gościa"):
             mod_range = list(range(-20, 21))
             m_key = st.session_state.mod_reset
@@ -166,11 +156,13 @@ def render_league_ui(df, league_name):
             a_total_mod = (a_k + a_f + a_s + a_p) / 100
             st.button("🧹 Resetuj", key=f"reset_a_{league_name}", on_click=reset_mods, use_container_width=True)
 
-    h, a = df[df['Team'] == h_team].iloc[0], df[df['Team'] == a_team].iloc[0]
-    l_h_r = (h['HxG_F']*w0 + h['H_GF']*w1 + h['AxG_F']*w2 + h['T_GF']*w3)
-    m_h_r = (h['HxG_A']*w0 + h['H_GA']*w1 + h['AxG_A']*w2 + h['T_GA']*w3)
-    l_a_r = (a['TxG_F']*w0 + a['A_GF']*w1 + a['AxG_F']*w2 + a['T_GF']*w3)
-    m_a_r = (a['TxG_A']*w0 + a['A_GA']*w1 + a['AxG_A']*w2 + a['T_GA']*w3)
+    h = df[df['Team'] == h_team].iloc[0]
+    a = df[df['Team'] == a_team].iloc[0]
+
+    l_h_r = (h['HxG_F'] * w0 + h['H_GF'] * w1 + h['AxG_F'] * w2 + h['T_GF'] * w3)
+    m_h_r = (h['HxG_A'] * w0 + h['H_GA'] * w1 + h['AxG_A'] * w2 + h['T_GA'] * w3)
+    l_a_r = (a['TxG_F'] * w0 + a['A_GF'] * w1 + a['AxG_F'] * w2 + a['T_GF'] * w3)
+    m_a_r = (a['TxG_A'] * w0 + a['A_GA'] * w1 + a['AxG_A'] * w2 + a['T_GA'] * w3)
 
     h_atk_s, h_def_s = (l_h_r / avg_h_gf), (m_h_r / avg_a_gf)
     a_atk_s, a_def_s = (l_a_r / avg_a_gf), (m_a_r / avg_h_gf)
@@ -180,14 +172,18 @@ def render_league_ui(df, league_name):
 
     max_g = 12
     matrix = np.zeros((max_g, max_g))
+
     for x in range(max_g):
         for y in range(max_g):
             p = poisson.pmf(x, lambda_f) * poisson.pmf(y, mu_f)
             matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_f, mu_f, fixed_rho)
+
     matrix /= matrix.sum()
 
-    p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
-    model_odds = [1/max(p1, 0.001), 1/max(px, 0.001), 1/max(p2, 0.001)]
+    p1 = np.sum(np.tril(matrix, -1))
+    px = np.sum(np.diag(matrix))
+    p2 = np.sum(np.triu(matrix, 1))
+    model_odds = [1 / max(p1, 0.001), 1 / max(px, 0.001), 1 / max(p2, 0.001)]
 
     st.divider()
     c1, c2, c3 = st.columns(3)
@@ -202,7 +198,7 @@ def render_league_ui(df, league_name):
 
     st.divider()
     st.subheader("📊 Porównanie statystyk ze średnią ligową")
-    
+
     def color_stat(val, avg, is_defense=False):
         if not is_defense:
             color = "#28a745" if val >= avg else "#dc3545"
@@ -226,17 +222,21 @@ def render_league_ui(df, league_name):
             "Drużyna": [gf, ga, xgf, xga],
             "Średnia ligi": [l_avg_gf, l_avg_ga, l_avg_xgf, l_avg_xga]
         })
+
         def apply_styling(row):
             is_def = "Stracone" in row["Statystyka"] or "Obrona" in row["Statystyka"]
             style = color_stat(row["Drużyna"], row["Średnia ligi"], is_def)
             return [None, style, None]
+
         return df_stats.style.apply(apply_styling, axis=1).format("{:.2f}", subset=["Drużyna", "Średnia ligi"])
 
     col_stats_h, col_stats_a = st.columns(2)
+
     with col_stats_h:
         st.markdown(f"**Zakres dla {h_team}**")
         ctx_h = st.radio("Wybierz:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_h_{league_name}")
         st.table(create_stat_styled_table(h, ctx_h, df))
+
     with col_stats_a:
         st.markdown(f"**Zakres dla {a_team}**")
         ctx_a = st.radio("Wybierz:", ["Cały sezon", "Dom", "Wyjazd"], horizontal=True, key=f"ctx_a_{league_name}")
@@ -244,6 +244,7 @@ def render_league_ui(df, league_name):
 
     st.divider()
     st.markdown("### 📊 Porównanie Siły Zespołów")
+
     def format_strength(val, is_attack=True):
         pct = (val - 1.0) * 100
         color = "green" if (is_attack and val >= 1) or (not is_attack and val <= 1) else "red"
@@ -260,6 +261,7 @@ def render_league_ui(df, league_name):
     with st.expander("🧮 Szczegółowa Ścieżka Obliczeniowa"):
         st.subheader("1. Średnie ligowe")
         st.write(f"Średnia gospodarzy: `{avg_h_gf:.3f}` | Średnia gości: `{avg_a_gf:.3f}`")
+
         sc1, sc2 = st.columns(2)
         with sc1:
             st.markdown(f"**{h_team}**")
@@ -267,6 +269,7 @@ def render_league_ui(df, league_name):
         with sc2:
             st.markdown(f"**{a_team}**")
             st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
+
         st.subheader("2. Parametry Poisson (Skorygowane)")
         st.latex(rf"\lambda_{{final}} = \lambda_{{base}} \times (1 {h_total_mod:+.2f}) = {lambda_f:.3f}")
         st.latex(rf"\mu_{{final}} = \mu_{{base}} \times (1 {a_total_mod:+.2f}) = {mu_f:.3f}")
@@ -275,34 +278,37 @@ def render_league_ui(df, league_name):
         limit = 8
         fig, ax = plt.subplots(figsize=(10, 5))
         sns.heatmap(matrix[:limit, :limit], annot=True, fmt=".1%", cmap="YlGn", cbar=False)
-        plt.xlabel(f"Gole {a_team}") 
-        plt.ylabel(f"Gole {h_team}") 
+        plt.xlabel(f"Gole {a_team}")
+        plt.ylabel(f"Gole {h_team}")
         st.pyplot(fig)
 
     st.divider()
     st.subheader("📉 Analiza Under / Over")
     lines = [1.5, 2.5, 3.5, 4.5]
     ou_cols = st.columns(len(lines))
+
     for i, line in enumerate(lines):
         prob_under = sum(matrix[x, y] for x in range(max_g) for y in range(max_g) if x + y < line)
         prob_over = 1 - prob_under
         with ou_cols[i]:
             st.markdown(f"**Linia {line}**")
-            st.write(f"🟢 **OVER**: {prob_over:.1%} (Kurs: {1/max(prob_over, 0.001):.2f})")
-            st.write(f"🔴 **UNDER**: {prob_under:.1%} (Kurs: {1/max(prob_under, 0.001):.2f})")
+            st.write(f"🟢 **OVER**: {prob_over:.1%} (Kurs: {1 / max(prob_over, 0.001):.2f})")
+            st.write(f"🔴 **UNDER**: {prob_under:.1%} (Kurs: {1 / max(prob_under, 0.001):.2f})")
 
     st.divider()
     st.subheader("🥅 Obie Drużyny Strzelą (BTTS)")
     prob_btts_yes = sum(matrix[x, y] for x in range(1, max_g) for y in range(1, max_g))
     prob_btts_no = 1 - prob_btts_yes
+
     b1, b2 = st.columns(2)
     with b1:
-        st.write(f"🟢 **TAK**: {prob_btts_yes:.1%} (Kurs: {1/max(prob_btts_yes, 0.001):.2f})")
+        st.write(f"🟢 **TAK**: {prob_btts_yes:.1%} (Kurs: {1 / max(prob_btts_yes, 0.001):.2f})")
     with b2:
-        st.write(f"🔴 **NIE**: {prob_btts_no:.1%} (Kurs: {1/max(prob_btts_no, 0.001):.2f})")
+        st.write(f"🔴 **NIE**: {prob_btts_no:.1%} (Kurs: {1 / max(prob_btts_no, 0.001):.2f})")
 
     st.divider()
     st.subheader("🎲 Symulacja Monte Carlo (1 000 000 scenariuszy)")
+
     if st.button(f"🚀 URUCHOM ANALIZĘ 1 000 000 SCENARIUSZY", use_container_width=True, key=f"sim_{league_name}"):
         with st.status("Trwa symulowanie (1 mln prób)...", expanded=True) as status:
             n_sim = 1000000
@@ -310,84 +316,63 @@ def render_league_ui(df, league_name):
             sim_a = np.random.poisson(mu_f, n_sim)
             res_df = pd.DataFrame({'H': sim_h, 'A': sim_a, 'Total': sim_h + sim_a})
             most_common_row = res_df.groupby(['H', 'A']).size().idxmax()
+
             st.success(f"🏆 Najczęstszy wynik w symulacji: **{most_common_row[0]}:{most_common_row[1]}**")
+
             fig2, ax2 = plt.subplots(figsize=(10, 4))
             sns.kdeplot(sim_h, fill=True, color="#1f77b4", label=h_team, bw_adjust=3, ax=ax2)
             sns.kdeplot(sim_a, fill=True, color="#ff7f0e", label=a_team, bw_adjust=3, ax=ax2)
-            ax2.set_xlim(-0.5, 8.5) 
+            ax2.set_xlim(-0.5, 8.5)
             ax2.set_title("Rozkład prawdopodobieństwa goli")
             ax2.legend()
             st.pyplot(fig2, clear_figure=True)
+
             status.update(label="Analiza zakończona!", state="complete")
 
     st.markdown("<br><hr><h2 style='text-align: center;'>💬 Ekspert AI: Analiza Wyników</h2>", unsafe_allow_html=True)
+
     if "HF_TOKEN" in st.secrets:
         client = InferenceClient(api_key=st.secrets["HF_TOKEN"])
         current_context = f"MECZ: {h_team} vs {a_team}. Szanse: {p1:.1%} / {px:.1%} / {p2:.1%}. ExG: {lambda_f:.2f} - {mu_f:.2f}."
-        if f"messages_{league_name}" not in st.session_state: st.session_state[f"messages_{league_name}"] = []
+
+        if f"messages_{league_name}" not in st.session_state:
+            st.session_state[f"messages_{league_name}"] = []
+
         for message in st.session_state[f"messages_{league_name}"]:
-            with st.chat_message(message["role"]): st.markdown(message["content"])
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+
         if prompt := st.chat_input("Zadaj pytanie...", key=f"chat_input_{league_name}"):
             st.session_state[f"messages_{league_name}"].append({"role": "user", "content": prompt})
-            with st.chat_message("user"): st.markdown(prompt)
+
+            with st.chat_message("user"):
+                st.markdown(prompt)
+
             with st.chat_message("assistant"):
                 placeholder = st.empty()
                 try:
                     response = client.chat.completions.create(
                         model="meta-llama/Meta-Llama-3-8B-Instruct",
-                        messages=[{"role": "system", "content": f"Ekspert piłkarski. Kontekst: {current_context}"}, {"role": "user", "content": prompt}],
+                        messages=[
+                            {"role": "system", "content": f"Ekspert piłkarski. Kontekst: {current_context}"},
+                            {"role": "user", "content": prompt}
+                        ],
                         max_tokens=500
                     )
                     full_response = response.choices[0].message.content
                     placeholder.markdown(full_response)
                     st.session_state[f"messages_{league_name}"].append({"role": "assistant", "content": full_response})
-                except Exception as e: st.error(f"Błąd AI: {str(e)}")
-    else: st.info("Dodaj HF_TOKEN do Secrets.")
-
-    # --- MODUŁ: VALUE BET DETECTOR ---
-    st.divider()
-    st.markdown("<h2 style='text-align: center;'>⚖️ Porównanie z Rynkiem (Value Bet Detector)</h2>", unsafe_allow_html=True)
-    
-    odds_data = get_live_odds(LEAGUE_MAP.get(league_name))
-    if odds_data:
-        match = next((m for m in odds_data if h_team in m['home_team'] or a_team in m['away_team']), None)
-        
-        if match:
-            try:
-                bookie = match['bookmakers'][0]
-                mkt = bookie['markets'][0]['outcomes']
-                
-                live_1 = next(o['price'] for o in mkt if o['name'] == match['home_team'])
-                live_2 = next(o['price'] for o in mkt if o['name'] == match['away_team'])
-                live_x = next(o['price'] for o in mkt if o['name'] == 'Draw')
-                
-                compare_df = pd.DataFrame({
-                    "Typ": [f"1 ({h_team})", "X (Remis)", f"2 ({a_team})"],
-                    "Twoje Prawd.": [f"{p1:.1%}", f"{px:.1%}", f"{p2:.1%}"],
-                    "Twój Kurs": [model_odds[0], model_odds[1], model_odds[2]],
-                    "Kurs Bukmachera": [live_1, live_x, live_2],
-                    "Value (%)": [(p1 * live_1 - 1), (px * live_x - 1), (p2 * live_2 - 1)]
-                })
-
-                def style_value(val):
-                    color = '#28a745' if val > 0.05 else '#dc3545' if val < -0.05 else 'transparent'
-                    return f'background-color: {color}; color: white; font-weight: bold'
-
-                st.markdown(f"**Źródło danych:** {bookie['title']} (Aktualizacja: {match['commence_time'][:10]})")
-                st.table(compare_df.style.applymap(style_value, subset=['Value (%)'])
-                         .format("{:.2f}", subset=['Twój Kurs', 'Kurs Bukmachera']) # Tu skrócono kursy
-                         .format("{:.2%}", subset=['Value (%)']))
-                
-                if any((p1*live_1-1) > 0.05 for _ in [1]):
-                     st.success("🎯 Sugestia: Znaleziono matematyczną przewagę nad bukmacherem!")
-            except Exception:
-                st.info("Nie udało się sparsować kursów dla tego meczu.")
-        else:
-            st.info("Brak aktywnych kursów w API dla wybranego zestawienia.")
+                except Exception as e:
+                    st.error(f"Błąd AI: {str(e)}")
     else:
-        st.warning("Nie udało się pobrać kursów. Sprawdź ODDS_API_KEY w Secrets.")
+        st.info("Dodaj HF_TOKEN do Secrets.")
 
 # Wywołanie UI
-with tab_bl: render_league_ui(load_bundesliga(), "Bundesliga")
-with tab_pl: render_league_ui(load_premier_league(), "Premier League")
-with tab_ll: render_league_ui(load_la_liga(), "La Liga")
+with tab_bl:
+    render_league_ui(load_bundesliga(), "Bundesliga")
+
+with tab_pl:
+    render_league_ui(load_premier_league(), "Premier League")
+
+with tab_ll:
+    render_league_ui(load_la_liga(), "La Liga")
