@@ -9,7 +9,11 @@ from huggingface_hub import InferenceClient
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Football Predictor", layout="wide", page_icon="⚽")
 
-# --- DANE BAZOWE: BUNDESLIGA ---
+# =========================================================
+#                       DANE BAZOWE
+# =========================================================
+
+# --- BUNDESLIGA ---
 @st.cache_data
 def load_bundesliga():
     data = {
@@ -32,7 +36,8 @@ def load_bundesliga():
     }
     return pd.DataFrame(data)
 
-# --- DANE BAZOWE: PREMIER LEAGUE ---
+
+# --- PREMIER LEAGUE ---
 @st.cache_data
 def load_premier_league():
     data = {
@@ -53,7 +58,8 @@ def load_premier_league():
     }
     return pd.DataFrame(data)
 
-# --- DANE BAZOWE: LA LIGA ---
+
+# --- LA LIGA ---
 @st.cache_data
 def load_la_liga():
     data = {
@@ -74,7 +80,62 @@ def load_la_liga():
     }
     return pd.DataFrame(data)
 
-# --- DANE RECENT BONUS: BUNDESLIGA ---
+
+# --- SERIE A ---
+@st.cache_data
+def load_serie_a():
+    data = {
+        'Team': [
+            'Inter', 'AC Milan', 'Napoli', 'Como', 'Roma', 'Juventus', 'Atalanta', 'Bologna',
+            'Sassuolo', 'Lazio', 'Udinese', 'Parma Calcio 1913', 'Genoa', 'Cagliari',
+            'Torino', 'Lecce', 'Fiorentina', 'Cremonese', 'Verona', 'Pisa'
+        ],
+        'H_GF': [2.71, 1.36, 1.77, 1.71, 1.57, 2.07, 1.60, 1.00, 1.21, 1.43, 1.14, 0.79, 1.27, 1.14, 1.07, 0.73, 1.29, 0.85, 0.92, 0.29],
+        'H_GA': [0.86, 0.79, 0.92, 0.71, 0.64, 0.86, 0.87, 1.14, 1.43, 1.21, 1.29, 1.36, 1.27, 1.21, 1.57, 1.27, 1.36, 1.31, 1.62, 1.21],
+        'T_GF': [2.29, 1.57, 1.54, 1.64, 1.36, 1.79, 1.39, 1.32, 1.25, 1.00, 1.18, 0.71, 1.21, 1.07, 1.00, 0.71, 1.07, 0.79, 0.79, 0.71],
+        'T_GA': [0.79, 0.71, 1.04, 0.75, 0.75, 1.00, 0.93, 1.21, 1.36, 1.00, 1.46, 1.14, 1.43, 1.36, 1.75, 1.32, 1.50, 1.43, 1.75, 1.71],
+        'HxG_F': [2.82, 1.94, 1.51, 2.06, 1.80, 2.23, 2.25, 1.42, 1.23, 1.46, 1.29, 1.08, 1.32, 1.01, 1.44, 1.13, 1.79, 1.21, 0.98, 1.08],
+        'HxG_A': [0.80, 1.05, 1.17, 0.98, 0.88, 0.84, 1.10, 1.24, 1.74, 1.40, 1.16, 1.61, 1.39, 1.32, 1.66, 1.43, 1.35, 1.77, 1.14, 1.50],
+        'TxG_F': [2.45, 1.87, 1.55, 1.77, 1.58, 1.92, 1.90, 1.36, 1.23, 1.20, 1.22, 1.03, 1.33, 1.02, 1.25, 0.92, 1.52, 1.03, 1.06, 1.11],
+        'TxG_A': [0.81, 1.09, 1.12, 1.11, 1.17, 0.98, 1.38, 1.39, 1.64, 1.35, 1.51, 1.62, 1.51, 1.58, 1.61, 1.71, 1.54, 1.95, 1.42, 1.83],
+        'A_GF': [1.86, 1.79, 1.33, 1.57, 1.14, 1.50, 1.15, 1.64, 1.29, 0.57, 1.21, 0.64, 1.15, 1.00, 0.93, 0.69, 0.86, 0.73, 0.67, 1.14],
+        'A_GA': [0.71, 0.64, 1.13, 0.79, 0.86, 1.14, 1.00, 1.29, 1.29, 0.79, 1.64, 0.93, 1.62, 1.50, 1.93, 1.38, 1.64, 1.53, 1.87, 2.21],
+        'AxG_F': [2.08, 1.81, 1.58, 1.47, 1.35, 1.61, 1.50, 1.29, 1.23, 0.95, 1.15, 0.99, 1.34, 1.02, 1.07, 0.68, 1.25, 0.86, 1.13, 1.13],
+        'AxG_A': [0.82, 1.14, 1.08, 1.24, 1.46, 1.12, 1.71, 1.55, 1.54, 1.29, 1.86, 1.63, 1.64, 1.84, 1.57, 2.03, 1.73, 2.11, 1.65, 2.17],
+        'Logo_ID': [0] * 20
+    }
+    return pd.DataFrame(data)
+
+
+# --- LIGUE 1 ---
+@st.cache_data
+def load_ligue_1():
+    data = {
+        'Team': [
+            'Paris Saint-Germain', 'Lens', 'Marseille', 'Lyon', 'Rennes', 'Lille', 'Monaco', 'Strasbourg',
+            'Brest', 'Lorient', 'Angers', 'Toulouse', 'Paris FC', 'Le Havre', 'Nice', 'Auxerre', 'Nantes', 'Metz'
+        ],
+        'H_GF': [2.58, 2.00, 2.67, 1.67, 1.92, 1.54, 2.08, 1.75, 1.54, 2.00, 1.33, 1.54, 1.25, 1.15, 1.31, 0.77, 0.92, 0.83],
+        'H_GA': [0.58, 0.62, 1.25, 0.67, 1.00, 1.08, 1.46, 0.75, 1.00, 1.50, 1.08, 1.31, 1.83, 0.92, 1.62, 1.15, 1.77, 1.58],
+        'T_GF': [2.16, 1.92, 2.08, 1.60, 1.68, 1.52, 1.72, 1.60, 1.36, 1.40, 0.92, 1.32, 1.16, 0.80, 1.20, 0.76, 0.88, 0.88],
+        'T_GA': [0.88, 0.84, 1.32, 1.08, 1.40, 1.28, 1.48, 1.24, 1.36, 1.56, 1.20, 1.16, 1.64, 1.28, 1.92, 1.40, 1.68, 2.24],
+        'HxG_F': [2.30, 2.35, 2.18, 1.94, 1.94, 1.83, 1.98, 1.80, 1.76, 1.71, 1.24, 1.58, 1.45, 1.28, 1.73, 1.22, 1.14, 1.06],
+        'HxG_A': [0.85, 1.05, 1.30, 1.08, 1.58, 1.21, 1.30, 0.87, 1.21, 1.20, 1.50, 1.15, 1.62, 1.29, 1.61, 1.18, 1.59, 1.47],
+        'TxG_F': [2.20, 2.16, 1.98, 1.67, 1.51, 1.70, 1.80, 1.64, 1.41, 1.41, 0.96, 1.41, 1.30, 1.06, 1.45, 1.16, 1.03, 0.91],
+        'TxG_A': [0.95, 1.21, 1.45, 1.31, 1.75, 1.26, 1.44, 1.30, 1.49, 1.52, 1.66, 1.24, 1.77, 1.62, 1.78, 1.45, 1.60, 1.95],
+        'A_GF': [1.77, 1.83, 1.54, 1.54, 1.46, 1.50, 1.33, 1.46, 1.17, 0.85, 0.54, 1.08, 1.08, 0.42, 1.08, 0.75, 0.83, 0.92],
+        'A_GA': [1.15, 1.08, 1.38, 1.46, 1.77, 1.50, 1.50, 1.69, 1.75, 1.62, 1.31, 1.00, 1.46, 1.67, 2.25, 1.67, 1.58, 2.85],
+        'AxG_F': [2.11, 1.95, 1.79, 1.42, 1.11, 1.57, 1.61, 1.49, 1.03, 1.14, 0.69, 1.22, 1.16, 0.82, 1.15, 1.11, 0.92, 0.77],
+        'AxG_A': [1.04, 1.38, 1.60, 1.53, 1.92, 1.32, 1.58, 1.69, 1.78, 1.81, 1.80, 1.35, 1.91, 1.98, 1.96, 1.75, 1.61, 2.39],
+        'Logo_ID': [0] * 18
+    }
+    return pd.DataFrame(data)
+
+# =========================================================
+#                    RECENT BONUS DATA
+# =========================================================
+
+# --- BUNDESLIGA ---
 @st.cache_data
 def load_bundesliga_recent_bonus_data():
     data = {
@@ -97,7 +158,8 @@ def load_bundesliga_recent_bonus_data():
     recent_df['recent_xGA_pm'] = recent_df['recent_xGA_total'] / recent_df['recent_xg_matches']
     return recent_df
 
-# --- DANE RECENT BONUS: PREMIER LEAGUE ---
+
+# --- PREMIER LEAGUE ---
 @st.cache_data
 def load_premier_league_recent_bonus_data():
     data = {
@@ -121,7 +183,8 @@ def load_premier_league_recent_bonus_data():
     recent_df['recent_xGA_pm'] = recent_df['recent_xGA_total'] / recent_df['recent_xg_matches']
     return recent_df
 
-# --- DANE RECENT BONUS: LA LIGA ---
+
+# --- LA LIGA ---
 @st.cache_data
 def load_la_liga_recent_bonus_data():
     data = {
@@ -145,6 +208,58 @@ def load_la_liga_recent_bonus_data():
     recent_df['recent_xGA_pm'] = recent_df['recent_xGA_total'] / recent_df['recent_xg_matches']
     return recent_df
 
+
+# --- SERIE A ---
+# Z obrazów mamy recent GF/GA, ale nie komplet recent overall xG/xGA.
+# Dlatego xG/xGA recent zostawiamy puste -> komponent xG będzie neutralny.
+@st.cache_data
+def load_serie_a_recent_bonus_data():
+    data = {
+        'Team': [
+            'Inter', 'AC Milan', 'Napoli', 'Sassuolo', 'Como', 'Atalanta', 'Parma Calcio 1913', 'Lecce',
+            'Bologna', 'Juventus', 'Roma', 'Lazio', 'Fiorentina', 'Udinese', 'Genoa', 'Torino',
+            'Cagliari', 'Verona', 'Pisa', 'Cremonese'
+        ],
+        'recent_form_matches': [6] * 20,
+        'recent_GF_total': [14, 9, 12, 11, 9, 9, 6, 7, 5, 15, 11, 7, 6, 8, 9, 7, 6, 4, 2, 2],
+        'recent_GA_total': [3, 3, 9, 10, 5, 6, 6, 8, 7, 11, 8, 9, 8, 7, 9, 9, 7, 12, 11, 11],
+        'recent_xg_matches': [0] * 20,
+        'recent_xG_total': [np.nan] * 20,
+        'recent_xGA_total': [np.nan] * 20
+    }
+    recent_df = pd.DataFrame(data)
+    recent_df['recent_GF_pm'] = recent_df['recent_GF_total'] / recent_df['recent_form_matches']
+    recent_df['recent_GA_pm'] = recent_df['recent_GA_total'] / recent_df['recent_form_matches']
+    recent_df['recent_xG_pm'] = np.nan
+    recent_df['recent_xGA_pm'] = np.nan
+    return recent_df
+
+
+# --- LIGUE 1 ---
+# Z obrazów mamy recent GF/GA, ale nie komplet recent overall xG/xGA.
+@st.cache_data
+def load_ligue_1_recent_bonus_data():
+    data = {
+        'Team': [
+            'Monaco', 'Brest', 'Lens', 'Paris Saint-Germain', 'Rennes', 'Lyon', 'Lorient', 'Lille',
+            'Angers', 'Marseille', 'Auxerre', 'Paris FC', 'Strasbourg', 'Le Havre',
+            'Nantes', 'Nice', 'Toulouse', 'Metz'
+        ],
+        'recent_form_matches': [6] * 18,
+        'recent_GF_total': [15, 10, 15, 13, 12, 8, 10, 4, 3, 8, 5, 5, 8, 4, 4, 5, 2, 1],
+        'recent_GA_total': [4, 3, 5, 7, 8, 7, 9, 3, 5, 13, 6, 9, 8, 8, 8, 12, 6, 11],
+        'recent_xg_matches': [0] * 18,
+        'recent_xG_total': [np.nan] * 18,
+        'recent_xGA_total': [np.nan] * 18
+    }
+    recent_df = pd.DataFrame(data)
+    recent_df['recent_GF_pm'] = recent_df['recent_GF_total'] / recent_df['recent_form_matches']
+    recent_df['recent_GA_pm'] = recent_df['recent_GA_total'] / recent_df['recent_form_matches']
+    recent_df['recent_xG_pm'] = np.nan
+    recent_df['recent_xGA_pm'] = np.nan
+    return recent_df
+
+
 def dixon_coles_adjustment(x, y, l_h, m_a, rho):
     if x == 0 and y == 0:
         return 1 - (l_h * m_a * rho)
@@ -156,6 +271,7 @@ def dixon_coles_adjustment(x, y, l_h, m_a, rho):
         return 1 - rho
     return 1
 
+
 def get_recent_bonus_df(league_name):
     if league_name == "Bundesliga":
         return load_bundesliga_recent_bonus_data()
@@ -163,7 +279,12 @@ def get_recent_bonus_df(league_name):
         return load_premier_league_recent_bonus_data()
     if league_name == "La Liga":
         return load_la_liga_recent_bonus_data()
+    if league_name == "Serie A":
+        return load_serie_a_recent_bonus_data()
+    if league_name == "Ligue 1":
+        return load_ligue_1_recent_bonus_data()
     return None
+
 
 def calculate_recent_bonus(team_name, base_row, recent_df):
     eps = 1e-9
@@ -194,15 +315,26 @@ def calculate_recent_bonus(team_name, base_row, recent_df):
             "trend_defense_xga": 0.0,
             "trend_defense_ga": 0.0,
             "raw_defense_bonus": 0.0,
-            "defense_bonus": 0.0
+            "defense_bonus": 0.0,
+            "xg_component_available": True
         }
 
     r = team_recent.iloc[0]
 
     recent_GF_pm = float(r['recent_GF_pm'])
     recent_GA_pm = float(r['recent_GA_pm'])
-    recent_xG_pm = float(r['recent_xG_pm'])
-    recent_xGA_pm = float(r['recent_xGA_pm'])
+
+    # Jeżeli nie mamy recent xG/xGA, ustawiamy neutralnie = sezon
+    has_recent_xg = pd.notna(r['recent_xG_pm']) and pd.notna(r['recent_xGA_pm']) and int(r['recent_xg_matches']) > 0
+
+    if has_recent_xg:
+        recent_xG_pm = float(r['recent_xG_pm'])
+        recent_xGA_pm = float(r['recent_xGA_pm'])
+        recent_xg_matches = int(r['recent_xg_matches'])
+    else:
+        recent_xG_pm = season_xG
+        recent_xGA_pm = season_xGA
+        recent_xg_matches = 0
 
     # ATAK:
     # 70% = xG do xG
@@ -215,7 +347,6 @@ def calculate_recent_bonus(team_name, base_row, recent_df):
     # OBRONA:
     # 70% = xGA do xGA
     # 30% = GA do GA
-    # mniej dopuszczonego xGA i mniej straconych goli = lepiej
     trend_defense_xga = (season_xGA - recent_xGA_pm) / max(season_xGA, eps)
     trend_defense_ga = (season_GA - recent_GA_pm) / max(season_GA, eps)
     raw_defense_bonus = (trend_defense_xga * 0.7) + (trend_defense_ga * 0.3)
@@ -232,7 +363,7 @@ def calculate_recent_bonus(team_name, base_row, recent_df):
         "recent_xG_pm": recent_xG_pm,
         "recent_xGA_pm": recent_xGA_pm,
         "recent_form_matches": int(r['recent_form_matches']),
-        "recent_xg_matches": int(r['recent_xg_matches']),
+        "recent_xg_matches": recent_xg_matches,
         "trend_creation": trend_creation,
         "trend_goals": trend_goals,
         "raw_attack_bonus": raw_attack_bonus,
@@ -240,10 +371,13 @@ def calculate_recent_bonus(team_name, base_row, recent_df):
         "trend_defense_xga": trend_defense_xga,
         "trend_defense_ga": trend_defense_ga,
         "raw_defense_bonus": raw_defense_bonus,
-        "defense_bonus": defense_bonus
+        "defense_bonus": defense_bonus,
+        "xg_component_available": has_recent_xg
     }
 
+
 def render_recent_bonus_table(bonus):
+    xg_label = f"(ostatnie {bonus['recent_xg_matches']} mecze)" if bonus['recent_xg_matches'] > 0 else "(brak recent xG → użyto bazy sezonowej)"
     table_html = f"""
     <table style="width:100%; border-collapse:collapse; font-size:20px;">
         <tr>
@@ -264,17 +398,18 @@ def render_recent_bonus_table(bonus):
         <tr>
             <td style="border:1px solid #bbb; padding:10px;"><b>xG (Kreacja)</b></td>
             <td style="border:1px solid #bbb; padding:10px; background:#fff275;">{bonus['season_xG']:.2f}</td>
-            <td style="border:1px solid #bbb; padding:10px; background:#fff275;"><b>{bonus['recent_xG_pm']:.2f}</b> <span style="font-size:13px;">(ostatnie {bonus['recent_xg_matches']} mecze)</span></td>
+            <td style="border:1px solid #bbb; padding:10px; background:#fff275;"><b>{bonus['recent_xG_pm']:.2f}</b> <span style="font-size:13px;">{xg_label}</span></td>
         </tr>
         <tr>
             <td style="border:1px solid #bbb; padding:10px;"><b>xGA (Dopuszczone)</b></td>
             <td style="border:1px solid #bbb; padding:10px; background:#fff275;">{bonus['season_xGA']:.2f}</td>
-            <td style="border:1px solid #bbb; padding:10px; background:#fff275;"><b>{bonus['recent_xGA_pm']:.2f}</b> <span style="font-size:13px;">(ostatnie {bonus['recent_xg_matches']} mecze)</span></td>
+            <td style="border:1px solid #bbb; padding:10px; background:#fff275;"><b>{bonus['recent_xGA_pm']:.2f}</b> <span style="font-size:13px;">{xg_label}</span></td>
         </tr>
     </table>
     """
     st.markdown(f"### Dane wejściowe dla {bonus['team']}")
     st.markdown(table_html, unsafe_allow_html=True)
+
 
 def render_recent_bonus_details(bonus):
     atk_sign = "podniesiona" if bonus['attack_bonus'] >= 0 else "obniżona"
@@ -289,6 +424,9 @@ def render_recent_bonus_details(bonus):
 - **Po tłumieniu (× 0.25)**: {bonus['raw_attack_bonus']:+.2%} × 0.25 = **{bonus['attack_bonus']:+.2%}**
         """
     )
+    if not bonus["xg_component_available"]:
+        st.caption("Brak recent overall xG/xGA dla tej ligi w załączonych danych — komponent xG/xGA został ustawiony neutralnie względem sezonu.")
+
     st.markdown(f"**Wynik:** Siła ataku **{bonus['team']}** zostaje **{atk_sign}** o **{abs(bonus['attack_bonus']):.2%}**.")
 
     st.markdown(f"## 3. Obliczanie Bonusu Obrony {bonus['team']}")
@@ -302,6 +440,11 @@ def render_recent_bonus_details(bonus):
         """
     )
     st.markdown(f"**Wynik:** Obrona **{bonus['team']}** jest oceniana o **{abs(bonus['defense_bonus']):.2%} {def_sign}** niż średnia z sezonu.")
+
+
+# =========================================================
+#                 SESSION STATE / SIDEBAR
+# =========================================================
 
 if 'mod_reset' not in st.session_state:
     st.session_state.mod_reset = 0
@@ -331,7 +474,13 @@ if v0 + v1 + v2 + v3 != 100:
 w0, w1, w2, w3 = v0 / 100, v1 / 100, v2 / 100, v3 / 100
 fixed_rho = -0.15
 
-tab_bl, tab_pl, tab_ll = st.tabs(["🇩🇪 Bundesliga", "🏴 Premier League", "🇪🇸 La Liga"])
+# =========================================================
+#                         UI LIGI
+# =========================================================
+
+tab_bl, tab_pl, tab_ll, tab_sa, tab_l1 = st.tabs(
+    ["🇩🇪 Bundesliga", "🏴 Premier League", "🇪🇸 La Liga", "🇮🇹 Serie A", "🇫🇷 Ligue 1"]
+)
 
 def render_league_ui(df, league_name):
     avg_h_gf, avg_a_gf = df['H_GF'].mean(), df['A_GF'].mean()
@@ -342,7 +491,8 @@ def render_league_ui(df, league_name):
     with col_a:
         h_team = st.selectbox("Gospodarz", df['Team'], index=0, key=f"h_{league_name}")
         h_id = df[df['Team'] == h_team]['Logo_ID'].values[0]
-        st.image(f"https://tmssl.akamaized.net/images/wappen/head/{h_id}.png", width=100)
+        if pd.notna(h_id) and int(h_id) > 0:
+            st.image(f"https://tmssl.akamaized.net/images/wappen/head/{int(h_id)}.png", width=100)
         with st.expander("🛠️ Modyfikatory Gospodarza"):
             mod_range = list(range(-20, 21))
             m_key = st.session_state.mod_reset
@@ -356,7 +506,8 @@ def render_league_ui(df, league_name):
     with col_b:
         a_team = st.selectbox("Gość", df['Team'], index=1, key=f"a_{league_name}")
         a_id = df[df['Team'] == a_team]['Logo_ID'].values[0]
-        st.image(f"https://tmssl.akamaized.net/images/wappen/head/{a_id}.png", width=100)
+        if pd.notna(a_id) and int(a_id) > 0:
+            st.image(f"https://tmssl.akamaized.net/images/wappen/head/{int(a_id)}.png", width=100)
         with st.expander("🛠️ Modyfikatory Gościa"):
             mod_range = list(range(-20, 21))
             m_key = st.session_state.mod_reset
@@ -397,7 +548,7 @@ def render_league_ui(df, league_name):
             render_recent_bonus_table(a_bonus)
             render_recent_bonus_details(a_bonus)
 
-    # POPRAWIONE: właściwe kolumny home/away + total
+    # bazowe ratingi
     l_h_r = (h['HxG_F'] * w0 + h['H_GF'] * w1 + h['TxG_F'] * w2 + h['T_GF'] * w3)
     m_h_r = (h['HxG_A'] * w0 + h['H_GA'] * w1 + h['TxG_A'] * w2 + h['T_GA'] * w3)
 
@@ -527,7 +678,6 @@ def render_league_ui(df, league_name):
                 st.write(f"🔥 **Bonus ataku ostatnich meczów:** `{h_recent_attack_bonus:+.2%}`")
                 st.write(f"🛡️ **Bonus obrony rywala:** `{a_recent_defense_bonus:+.2%}`")
                 st.write(f"⚙️ **Mnożnik formy:** `{home_recent_multiplier:.3f}`")
-
         with sc2:
             st.markdown(f"**{a_team}**")
             st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
@@ -625,6 +775,7 @@ def render_league_ui(df, league_name):
     else:
         st.info("Dodaj HF_TOKEN do Secrets.")
 
+
 with tab_bl:
     render_league_ui(load_bundesliga(), "Bundesliga")
 
@@ -633,3 +784,9 @@ with tab_pl:
 
 with tab_ll:
     render_league_ui(load_la_liga(), "La Liga")
+
+with tab_sa:
+    render_league_ui(load_serie_a(), "Serie A")
+
+with tab_l1:
+    render_league_ui(load_ligue_1(), "Ligue 1")
