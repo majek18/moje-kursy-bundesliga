@@ -169,15 +169,12 @@ def calculate_recent_bonus(team_name, base_row, recent_df):
     eps = 1e-9
     team_recent = recent_df[recent_df['Team'] == team_name]
 
+    season_GF = float(base_row['T_GF'])
+    season_GA = float(base_row['T_GA'])
+    season_xG = float(base_row['TxG_F'])
+    season_xGA = float(base_row['TxG_A'])
+
     if team_recent.empty:
-        season_GF = float(base_row['T_GF'])
-        season_GA = float(base_row['T_GA'])
-        season_xG = float(base_row['TxG_F'])
-        season_xGA = float(base_row['TxG_A'])
-
-        season_finishing = (season_GF - season_xG) / max(season_xG, eps)
-        season_defense_gk = (season_xGA - season_GA) / max(season_xGA, eps)
-
         return {
             "team": team_name,
             "season_GF": season_GF,
@@ -190,47 +187,38 @@ def calculate_recent_bonus(team_name, base_row, recent_df):
             "recent_xGA_pm": season_xGA,
             "recent_form_matches": 0,
             "recent_xg_matches": 0,
-            "season_finishing": season_finishing,
-            "recent_finishing": season_finishing,
-            "finishing_delta": 0.0,
-            "season_defense_gk": season_defense_gk,
-            "recent_defense_gk": season_defense_gk,
-            "defense_gk_delta": 0.0,
             "trend_creation": 0.0,
+            "trend_goals": 0.0,
             "raw_attack_bonus": 0.0,
             "attack_bonus": 0.0,
-            "trend_defense": 0.0,
+            "trend_defense_xga": 0.0,
+            "trend_defense_ga": 0.0,
             "raw_defense_bonus": 0.0,
             "defense_bonus": 0.0
         }
 
     r = team_recent.iloc[0]
 
-    season_GF = float(base_row['T_GF'])
-    season_GA = float(base_row['T_GA'])
-    season_xG = float(base_row['TxG_F'])
-    season_xGA = float(base_row['TxG_A'])
-
     recent_GF_pm = float(r['recent_GF_pm'])
     recent_GA_pm = float(r['recent_GA_pm'])
     recent_xG_pm = float(r['recent_xG_pm'])
     recent_xGA_pm = float(r['recent_xGA_pm'])
 
-    # --- POPRAWKA 1: bonus ma mierzyć zmianę względem sezonu, a nie sam stan "recent"
-    season_finishing = (season_GF - season_xG) / max(season_xG, eps)
-    recent_finishing = (recent_GF_pm - recent_xG_pm) / max(recent_xG_pm, eps)
-    finishing_delta = recent_finishing - season_finishing
-
-    season_defense_gk = (season_xGA - season_GA) / max(season_xGA, eps)
-    recent_defense_gk = (recent_xGA_pm - recent_GA_pm) / max(recent_xGA_pm, eps)
-    defense_gk_delta = recent_defense_gk - season_defense_gk
-
+    # ATAK:
+    # 70% = xG do xG
+    # 30% = gole do goli
     trend_creation = (recent_xG_pm - season_xG) / max(season_xG, eps)
-    raw_attack_bonus = (trend_creation * 0.7) + (finishing_delta * 0.3)
+    trend_goals = (recent_GF_pm - season_GF) / max(season_GF, eps)
+    raw_attack_bonus = (trend_creation * 0.7) + (trend_goals * 0.3)
     attack_bonus = raw_attack_bonus * 0.25
 
-    trend_defense = (season_xGA - recent_xGA_pm) / max(season_xGA, eps)
-    raw_defense_bonus = (trend_defense * 0.7) + (defense_gk_delta * 0.3)
+    # OBRONA:
+    # 70% = xGA do xGA
+    # 30% = GA do GA
+    # mniej dopuszczonego xGA i mniej straconych goli = lepiej
+    trend_defense_xga = (season_xGA - recent_xGA_pm) / max(season_xGA, eps)
+    trend_defense_ga = (season_GA - recent_GA_pm) / max(season_GA, eps)
+    raw_defense_bonus = (trend_defense_xga * 0.7) + (trend_defense_ga * 0.3)
     defense_bonus = raw_defense_bonus * 0.25
 
     return {
@@ -245,16 +233,12 @@ def calculate_recent_bonus(team_name, base_row, recent_df):
         "recent_xGA_pm": recent_xGA_pm,
         "recent_form_matches": int(r['recent_form_matches']),
         "recent_xg_matches": int(r['recent_xg_matches']),
-        "season_finishing": season_finishing,
-        "recent_finishing": recent_finishing,
-        "finishing_delta": finishing_delta,
-        "season_defense_gk": season_defense_gk,
-        "recent_defense_gk": recent_defense_gk,
-        "defense_gk_delta": defense_gk_delta,
         "trend_creation": trend_creation,
+        "trend_goals": trend_goals,
         "raw_attack_bonus": raw_attack_bonus,
         "attack_bonus": attack_bonus,
-        "trend_defense": trend_defense,
+        "trend_defense_xga": trend_defense_xga,
+        "trend_defense_ga": trend_defense_ga,
         "raw_defense_bonus": raw_defense_bonus,
         "defense_bonus": defense_bonus
     }
@@ -299,11 +283,9 @@ def render_recent_bonus_details(bonus):
     st.markdown(f"## 2. Obliczanie Bonusu Ataku {bonus['team']}")
     st.markdown(
         f"""
-- **Trend Kreacji (70%)**: ({bonus['recent_xG_pm']:.2f} - {bonus['season_xG']:.2f}) / {bonus['season_xG']:.2f} = **{bonus['trend_creation']:+.1%}**
-- **Skuteczność sezon**: ({bonus['season_GF']:.2f} - {bonus['season_xG']:.2f}) / {bonus['season_xG']:.2f} = **{bonus['season_finishing']:+.1%}**
-- **Skuteczność recent**: ({bonus['recent_GF_pm']:.2f} - {bonus['recent_xG_pm']:.2f}) / {bonus['recent_xG_pm']:.2f} = **{bonus['recent_finishing']:+.1%}**
-- **Zmiana skuteczności (30%)**: {bonus['recent_finishing']:+.1%} - {bonus['season_finishing']:+.1%} = **{bonus['finishing_delta']:+.1%}**
-- **Surowy Bonus Ataku**: ({bonus['trend_creation']:+.1%} × 0.7) + ({bonus['finishing_delta']:+.1%} × 0.3) = **{bonus['raw_attack_bonus']:+.2%}**
+- **Trend xG / Kreacji (70%)**: ({bonus['recent_xG_pm']:.2f} - {bonus['season_xG']:.2f}) / {bonus['season_xG']:.2f} = **{bonus['trend_creation']:+.1%}**
+- **Trend Goli (30%)**: ({bonus['recent_GF_pm']:.2f} - {bonus['season_GF']:.2f}) / {bonus['season_GF']:.2f} = **{bonus['trend_goals']:+.1%}**
+- **Surowy Bonus Ataku**: ({bonus['trend_creation']:+.1%} × 0.7) + ({bonus['trend_goals']:+.1%} × 0.3) = **{bonus['raw_attack_bonus']:+.2%}**
 - **Po tłumieniu (× 0.25)**: {bonus['raw_attack_bonus']:+.2%} × 0.25 = **{bonus['attack_bonus']:+.2%}**
         """
     )
@@ -313,11 +295,9 @@ def render_recent_bonus_details(bonus):
     st.markdown(f"Sprawdzamy, jak radzi sobie blok defensywny i bramkarz **{bonus['team']}**.")
     st.markdown(
         f"""
-- **Trend Defensywny (70%)**: ({bonus['season_xGA']:.2f} - {bonus['recent_xGA_pm']:.2f}) / {bonus['season_xGA']:.2f} = **{bonus['trend_defense']:+.1%}**
-- **Skuteczność Obrony/GK sezon**: ({bonus['season_xGA']:.2f} - {bonus['season_GA']:.2f}) / {bonus['season_xGA']:.2f} = **{bonus['season_defense_gk']:+.1%}**
-- **Skuteczność Obrony/GK recent**: ({bonus['recent_xGA_pm']:.2f} - {bonus['recent_GA_pm']:.2f}) / {bonus['recent_xGA_pm']:.2f} = **{bonus['recent_defense_gk']:+.1%}**
-- **Zmiana skuteczności Obrony/GK (30%)**: {bonus['recent_defense_gk']:+.1%} - {bonus['season_defense_gk']:+.1%} = **{bonus['defense_gk_delta']:+.1%}**
-- **Surowy Bonus Obrony**: ({bonus['trend_defense']:+.1%} × 0.7) + ({bonus['defense_gk_delta']:+.1%} × 0.3) = **{bonus['raw_defense_bonus']:+.2%}**
+- **Trend xGA / Obrony (70%)**: ({bonus['season_xGA']:.2f} - {bonus['recent_xGA_pm']:.2f}) / {bonus['season_xGA']:.2f} = **{bonus['trend_defense_xga']:+.1%}**
+- **Trend Goli Straconych (30%)**: ({bonus['season_GA']:.2f} - {bonus['recent_GA_pm']:.2f}) / {bonus['season_GA']:.2f} = **{bonus['trend_defense_ga']:+.1%}**
+- **Surowy Bonus Obrony**: ({bonus['trend_defense_xga']:+.1%} × 0.7) + ({bonus['trend_defense_ga']:+.1%} × 0.3) = **{bonus['raw_defense_bonus']:+.2%}**
 - **Po tłumieniu (× 0.25)**: {bonus['raw_defense_bonus']:+.2%} × 0.25 = **{bonus['defense_bonus']:+.2%}**
         """
     )
@@ -417,7 +397,7 @@ def render_league_ui(df, league_name):
             render_recent_bonus_table(a_bonus)
             render_recent_bonus_details(a_bonus)
 
-    # --- POPRAWKA 2: właściwe kolumny dla Home/Away i Total
+    # POPRAWIONE: właściwe kolumny home/away + total
     l_h_r = (h['HxG_F'] * w0 + h['H_GF'] * w1 + h['TxG_F'] * w2 + h['T_GF'] * w3)
     m_h_r = (h['HxG_A'] * w0 + h['H_GA'] * w1 + h['TxG_A'] * w2 + h['T_GA'] * w3)
 
@@ -449,7 +429,9 @@ def render_league_ui(df, league_name):
             matrix[x, y] = p * dixon_coles_adjustment(x, y, lambda_f, mu_f, fixed_rho)
     matrix /= matrix.sum()
 
-    p1, px, p2 = np.sum(np.tril(matrix, -1)), np.sum(np.diag(matrix)), np.sum(np.triu(matrix, 1))
+    p1 = np.sum(np.tril(matrix, -1))
+    px = np.sum(np.diag(matrix))
+    p2 = np.sum(np.triu(matrix, 1))
     model_odds = [1 / max(p1, 0.001), 1 / max(px, 0.001), 1 / max(p2, 0.001)]
 
     st.divider()
@@ -545,6 +527,7 @@ def render_league_ui(df, league_name):
                 st.write(f"🔥 **Bonus ataku ostatnich meczów:** `{h_recent_attack_bonus:+.2%}`")
                 st.write(f"🛡️ **Bonus obrony rywala:** `{a_recent_defense_bonus:+.2%}`")
                 st.write(f"⚙️ **Mnożnik formy:** `{home_recent_multiplier:.3f}`")
+
         with sc2:
             st.markdown(f"**{a_team}**")
             st.write(f"🎯 **Bazowa Siła Ataku:** `{l_a_r:.3f} / {avg_a_gf:.3f} = {a_atk_s:.3f}`")
